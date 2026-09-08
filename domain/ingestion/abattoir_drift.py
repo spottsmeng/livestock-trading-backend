@@ -51,6 +51,8 @@ def compare_abattoir_tables(
             old_value = previous_table.get(key1)
             new_value = current_table.get(key1)
             if old_value != new_value:
-                drift.append(AbattoirTableDrift(table_key=table_key, key1=key1, old_value=old_value, new_value=new_value))
+                drift.append(
+                    AbattoirTableDrift(table_key=table_key, key1=key1, old_value=old_value, new_value=new_value)
+                )
 
     return drift

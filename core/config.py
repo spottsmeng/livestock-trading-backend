@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     invite_ttl_hours: int = 72
 
     login_rate_limit_per_minute: int = 5
+    # §14 — "100/min general" on everything else under /api/v1, and a
+    # higher ceiling on the buyer-sync endpoints (§12.7's offline queue can
+    # legitimately burst many entries at once on reconnect). Both share
+    # core/rate_limit.py's fixed-window primitive with the login limiter.
+    general_rate_limit_per_minute: int = 100
+    buyer_sync_rate_limit_per_minute: int = 1000
 
     # Comma-separated. Must be explicit origins (not "*") because
     # allow_credentials=True is required for the refresh cookie — the
@@ -91,6 +97,16 @@ class Settings(BaseSettings):
     # introduced this phase — see services/escalation.py), so this is read
     # wherever a publication's delivery state is fetched.
     delivery_escalation_minutes: int = 15
+
+    # Phase 5 — §16 "Sentry on both tiers." Empty disables the SDK entirely
+    # (main.py only calls sentry_sdk.init if this is set) — see
+    # [[foss-only-software-stack]]: sentry.io's hosted SaaS is proprietary
+    # and out of scope for what's *deployed*. sentry-sdk itself is an
+    # MIT-licensed client SDK, fine regardless of what it talks to. Point
+    # this at a self-hosted, FOSS-licensed target in production — self-
+    # hosted Sentry (FSL, free to self-host) or GlitchTip (AGPL) — never at
+    # sentry.io.
+    sentry_dsn: str = ""
 
 
 settings = Settings()

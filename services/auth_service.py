@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core import rate_limit
 from core.config import settings
 from core.errors import (
     AccountNotActive,
@@ -10,7 +11,6 @@ from core.errors import (
     InvalidToken,
     MfaInvalid,
     MfaRequired,
-    RateLimited,
     TokenReused,
 )
 from core.security import (
@@ -30,14 +30,12 @@ from repositories import users as user_repo
 
 async def check_login_rate_limit(redis: Redis, *, key: str) -> None:
     """Fixed-window limiter, 5/min per email+IP (§14). Cheap and enough for
-    a login endpoint — this isn't the buyer-sync-scale limiter."""
-    redis_key = f"ratelimit:login:{key}"
-    count = await redis.incr(redis_key)
-    if count == 1:
-        await redis.expire(redis_key, 60)
-    if count > settings.login_rate_limit_per_minute:
-        ttl = await redis.ttl(redis_key)
-        raise RateLimited(retry_after_seconds=max(ttl, 1))
+    a login endpoint — this isn't the buyer-sync-scale limiter. Shares
+    core.rate_limit's primitive with Phase 5's general/buyer-sync limiters
+    rather than duplicating the incr/expire logic."""
+    await rate_limit.enforce(
+        redis, key=f"ratelimit:login:{key}", limit=settings.login_rate_limit_per_minute, window_seconds=60
+    )
 
 
 async def authenticate(db: AsyncSession, *, email: str, password: str, totp_code: str | None) -> tuple[User, Role]:

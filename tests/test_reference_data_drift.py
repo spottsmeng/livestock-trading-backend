@@ -37,7 +37,9 @@ async def test_identical_resubmission_produces_no_drift(client, db: AsyncSession
     assert drift_resp.json() == []
 
 
-async def test_abattoir_tables_endpoint_reflects_latest_snapshot(client, db: AsyncSession, everhealth_org: Organisation):
+async def test_abattoir_tables_endpoint_reflects_latest_snapshot(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
     headers = await accountant_headers(client, db, everhealth_org, email="bing-drift2@test.com")
     snapshot = await _upload_and_commit(client, headers)
 

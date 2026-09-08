@@ -247,6 +247,16 @@ async def remove_fill(
     await buy_instructions_repo.delete_fill(db, fill)
 
 
+def schw_kg_for_entries(entries: list) -> Decimal:
+    """Ordered/Bought SCHW's shared per-entry math (§13.1: `heads x weight
+    requirement`, applied here to actual buy_entries rather than an
+    instruction line's planned figures) — factored out so Phase 5's
+    fulfilment panel (services/analytics_service.py, grouped by trade date
+    across ALL instructions) reuses this exact formula instead of
+    re-deriving it, per phase05-instructions.txt's non-negotiable #6."""
+    return sum((e.weight_kg * e.head_count for e in entries), MONEY_ZERO)
+
+
 @dataclass(slots=True)
 class SaleyardReconciliation:
     saleyard: str
@@ -291,7 +301,7 @@ async def compute_reconciliation(
     saleyard_rows = [
         SaleyardReconciliation(
             saleyard=saleyard,
-            schw_kg=sum((e.weight_kg * e.head_count for e in es), MONEY_ZERO),
+            schw_kg=schw_kg_for_entries(es),
             heads=sum(e.head_count for e in es),
             actual_cost=sum((e.price_per_head * e.head_count for e in es), MONEY_ZERO),
         )

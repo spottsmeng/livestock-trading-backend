@@ -136,3 +136,30 @@ class BulkSyncItemResult(BaseModel):
     is_possible_duplicate: bool | None = None
     error_code: str | None = None
     error_message: str | None = None
+
+
+class SaleyardSpendRow(BaseModel):
+    saleyard: str
+    spend_aud: Decimal
+
+
+class ScorecardResponse(BaseModel):
+    """§12.6, §9.5 `GET /buyer/scorecard` — own performance only. Every
+    field here is either a count/rate or an aggregate the buyer is already
+    entitled to see about their OWN entries (§2.2 permits a buyer to read
+    their own buy entries and their own scorecard) — deliberately none of
+    the forbidden field *names* either (customer_name, avg_price_aud,
+    nrv_per_kg, amount_aud, mom_ph, dnbp_benchmark, profit_on_*, diff_vs_*,
+    peters_expectation, expected_livestock_cost — see
+    tests/test_buyer_response_isolation.py's regex)."""
+
+    from_: str | None
+    to: str | None
+    heads_bought: int
+    heads_target: Decimal | None  # None when no publication was live in the window — see §3 of the approved plan
+    avg_paid_per_kg: Decimal | None
+    avg_dnbp_per_kg: Decimal | None
+    headroom_captured_aud: Decimal
+    breach_count: int
+    breach_rate: Decimal
+    spend_by_saleyard: list[SaleyardSpendRow]

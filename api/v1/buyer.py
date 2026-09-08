@@ -6,6 +6,7 @@ reconstructed ad hoc in a route handler (§14).
 """
 
 import uuid
+from datetime import date as date_cls
 
 from fastapi import APIRouter, Depends, Query, Request
 from redis.asyncio import Redis
@@ -32,8 +33,9 @@ from schemas.buyer import (
     InstructionLineResponse,
     InstructionResponse,
     PushSubscriptionRequest,
+    ScorecardResponse,
 )
-from services import buy_entry_service, buy_instruction_service, delivery_service
+from services import buy_entry_service, buy_instruction_service, delivery_service, scorecard_service
 from services.buy_entry_service import BuyEntryInput
 
 router = APIRouter(prefix="/buyer", tags=["buyer"])
@@ -148,8 +150,6 @@ async def list_entries(
     current: CurrentUser = Depends(_buyer_only),
     db: AsyncSession = Depends(get_db),
 ) -> list[BuyEntryResponse]:
-    from datetime import date as date_cls
-
     parsed_date = date_cls.fromisoformat(trade_date) if trade_date else None
     entries = await buy_entries_repo.list_for_buyer(db, current.user_id, trade_date=parsed_date, saleyard=saleyard)
     return [_to_entry_response(e) for e in entries]
@@ -251,6 +251,25 @@ async def instruction_acknowledge(
         raise NotFound("Buy instruction")
     await buy_instruction_service.acknowledge(db, instruction, buyer_id=current.user_id)
     await db.commit()
+
+
+@router.get("/scorecard", response_model=ScorecardResponse)
+async def scorecard(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    current: CurrentUser = Depends(_buyer_only),
+    db: AsyncSession = Depends(get_db),
+) -> ScorecardResponse:
+    """§12.6, §9.5 — own performance only. `buyer_id=current.user_id` is
+    hard-coded here, not taken from a query param, the same row-level-
+    scoping discipline every other route in this module already follows —
+    there is no way to ask for another buyer's scorecard through this
+    endpoint."""
+    since = date_cls.fromisoformat(from_) if from_ else None
+    until = date_cls.fromisoformat(to) if to else None
+    return await scorecard_service.build_scorecard(
+        db, org_id=current.org_id, buyer_id=current.user_id, since=since, until=until
+    )
 
 
 @router.post("/push-subscriptions", status_code=204)
