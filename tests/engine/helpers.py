@@ -1,6 +1,12 @@
 """Shared test-only helpers for loading fixtures/engine-test-vectors.json.
 Not part of domain/engine — this filesystem/json work belongs in tests, not
-in the pure engine package."""
+in the pure engine package.
+
+fixtures/ is vendored inside backend/ (not the shared parent folder one
+level up) — see backend/fixtures/README.md: this repo is the only
+consumer of these files, and a path reaching outside the repo can never be
+resolved from a clean CI checkout, which broke backend CI's fixtures-
+dependent tests since Phase 1 until this was fixed."""
 
 import json
 from decimal import Decimal
@@ -8,7 +14,7 @@ from pathlib import Path
 
 from domain.engine.config import EverhealthConfig
 
-FIXTURES_DIR = Path(__file__).resolve().parents[3] / "fixtures"
+FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 VECTORS_PATH = FIXTURES_DIR / "engine-test-vectors.json"
 
 TOLERANCE = Decimal("1E-10")  # matches the fixture file's own "tolerance": 1e-10

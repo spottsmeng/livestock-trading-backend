@@ -20,7 +20,7 @@ from models.reference_data import ProductTypeRegistry, ReferenceDataEntry, Refer
 from models.user import User
 from models.user_role import UserRole
 
-_SEED_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "reference-data-seed.json"
+_SEED_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "reference-data-seed.json"
 
 DEV_PASSWORD = "TestPassword123!"  # noqa: S105 — fixture-only, never a real credential
 

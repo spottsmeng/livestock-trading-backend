@@ -39,7 +39,7 @@ from models.enums import ReferenceDataTableKey
 from repositories import reference_data as reference_data_repo
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_SEED_PATH = _BACKEND_ROOT.parent / "fixtures" / "reference-data-seed.json"
+_DEFAULT_SEED_PATH = _BACKEND_ROOT / "fixtures" / "reference-data-seed.json"
 
 
 def _seed_path() -> Path:

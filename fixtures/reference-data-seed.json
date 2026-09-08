@@ -1,0 +1,203 @@
+{
+  "$comment": "Seed reference data for the Livestock Trade Management platform. Values extracted from 'Active Purchase Orders 07-08-2026 (WORKING).xlsx' and 'Active Purchase Orders 12-08-2026.xlsx'. CRITICAL: the two blocks below are governed differently. 'everhealth' is owned, editable and money-moving. 'abattoir' is received data, ingested from each submission, used ONLY for the cross-check in PRD 5.2, and must never be editable in this system.",
+  "currency": "AUD",
+  "timezone": "Australia/Melbourne",
+  "effective_from": "2026-08-07",
+  "everhealth": {
+    "$comment": "OWNED BY EVERHEALTH. Admin-editable, versioned, effective-dated. Changes to dnbp_factor_by_species or cif_buffer_per_kg change what the buyer may pay \u2014 they require an impact preview, a second confirmation, and an audit entry.",
+    "cif_buffer_per_kg": {
+      "value": 0.3,
+      "source_of_truth_input": true,
+      "note": "Deducted in column X for EVERY line, CIF and FAS alike. This is deliberate and confirmed by the business \u2014 do not restrict it to CIF. Column K (abattoir-owned) applies it to CIF only, which is why K and X diverge on FAS lines."
+    },
+    "dnbp_factor_by_species": {
+      "$comment": "\u2605\u2605 SOURCE-OF-TRUTH INPUT \u2605\u2605 bing_dnbp = (avg_price_aud - cif_buffer) * factor[species]. Half of the critical path of the business. ADMIN-only, impact-previewed, audited.",
+      "source_of_truth_input": true,
+      "source_cells": "Profitability Analysis!AC1:AC4",
+      "values": {
+        "SHEEP": 0.83,
+        "LAMB": 0.83,
+        "GOAT": 0.77,
+        "VEAL": 0.5
+      },
+      "missing": {
+        "MUTTON": "ABSENT in the source workbook while MUTTON orders exist in real data (e.g. CED18656). Blocks publication with NO_DNBP_FACTOR. Do not guess. See PRD open decision D1."
+      },
+      "notes": {
+        "VEAL": "0.50 diverges sharply from the financier's implied 0.7143 (1/1.40), while SHEEP, LAMB and GOAT agree within 0.5%. Material and unresolved \u2014 see PRD open decision D4."
+      }
+    },
+    "standard_weight_by_species": {
+      "$comment": "Basis for the per-kg conversions Y, Z and AA. Does NOT affect bing_dnbp. A missing entry degrades the supporting analysis only and must not block a publication.",
+      "source_of_truth_input": false,
+      "source_cells": "Profitability Analysis!X1:Y4",
+      "values": {
+        "SHEEP": 22,
+        "LAMB": 18,
+        "GOAT": 14,
+        "VEAL": 17
+      },
+      "missing": {
+        "MUTTON": "ABSENT. Raises NO_STANDARD_WEIGHT (WARN). Sheet1!O:P suggests 24, but that table is not referenced by any formula. See PRD open decision D1."
+      },
+      "conflicts": {
+        "LAMB": "The engine table (X1:Y4) says 18; the unused reference table (Sheet1!O:P) says 19. Seed 18 \u2014 it is the table the formulas actually read. See PRD open decision D2."
+      }
+    },
+    "saleyard_calendar": {
+      "$comment": "Drives the Buy Instruction prepayment block and the buyer PWA's default saleyard.",
+      "values": [
+        {
+          "saleyard": "Bendigo",
+          "day": "MONDAY",
+          "prepayment_aud": 50000,
+          "note": null
+        },
+        {
+          "saleyard": "Ballarat",
+          "day": "TUESDAY",
+          "prepayment_aud": 100000,
+          "note": "Requires $40k to Southern Central to open the Ballarat market"
+        },
+        {
+          "saleyard": "Wagga",
+          "day": "THURSDAY",
+          "prepayment_aud": 140000,
+          "note": "Requires $147k to Southern Central to open the Northern Markets (Wagga and Yass)"
+        },
+        {
+          "saleyard": "Griffith",
+          "day": "FRIDAY",
+          "prepayment_aud": 110000,
+          "note": "Part of the Northern Markets arrangement above"
+        }
+      ]
+    },
+    "operational_constants": {
+      "submission_deadline_local": "13:00",
+      "default_currency": "AUD",
+      "dnbp_display_rounding": {
+        "dp": 2,
+        "mode": "ROUND_FLOOR",
+        "note": "Always round DOWN. Rounding a ceiling price up would authorise an overpay."
+      },
+      "bid_check_close_threshold_pct": 5,
+      "buyer_weight_band_tolerance_pct": 15,
+      "stale_instruction_hours": 24
+    }
+  },
+  "abattoir": {
+    "$comment": "OWNED BY THE ABATTOIR. Received inside each submission's lookup sheet ('Sheet1' in the 07-08 file, 'Inputs' in the 12-08 file). READ-ONLY in this system. Used ONLY to cross-check the received values in columns K, M, N, O, Q, T, U and V (PRD 5.2). NEVER used to compute anything, and never to compute bing_dnbp. POST /reference-data/versions must reject writes to any table in this block with 403 ABATTOIR_OWNED_TABLE.",
+    "pack_cost_by_product_type": {
+      "source_cells": "Sheet1!D:E",
+      "produces_column": "M",
+      "values": {
+        "CCS": 2,
+        "6 WAY": 4,
+        "FULL BONE": 7
+      }
+    },
+    "offal_return_ph_by_species": {
+      "source_cells": "Sheet1!G:H",
+      "produces_column": "N",
+      "values": {
+        "SHEEP": 8,
+        "MUTTON": 8,
+        "GOAT": 6,
+        "VEAL": 11,
+        "LAMB": 11
+      }
+    },
+    "skin_return_ph_by_species": {
+      "source_cells": "Sheet1!K:L",
+      "produces_column": "O",
+      "values": {
+        "SHEEP": 10,
+        "MUTTON": 10,
+        "GOAT": 0,
+        "VEAL": 12,
+        "LAMB": 10
+      },
+      "notes": {
+        "GOAT": "The table says 0, but every active GOAT line arrives with a hand-set 0.5. Receive and use 0.5 as submitted, mark it HAND_SET, and report the divergence. It is the abattoir's number to set \u2014 do not correct it. See PRD open decision D3."
+      }
+    },
+    "reference_weight_by_species": {
+      "source_cells": "Sheet1!O:P",
+      "produces_column": null,
+      "note": "Present in the abattoir's lookup sheet but referenced by no formula. Retained only to explain the LAMB 18-vs-19 conflict (PRD D2). Do not use it for anything.",
+      "values": {
+        "SHEEP": 22,
+        "MUTTON": 24,
+        "GOAT": 14,
+        "VEAL": 17,
+        "LAMB": 19
+      }
+    },
+    "required_margin_by_species": {
+      "source_cells": "Inputs!R:S (12-08 file only)",
+      "produces_column": "S (the financier benchmark)",
+      "note": "Explains the abattoir's newer benchmark: dnbp_benchmark = K / (1 + margin). Reference only \u2014 never an Everhealth engine.",
+      "values": {
+        "SHEEP": 0.2,
+        "GOAT": 0.3,
+        "VEAL": 0.4,
+        "LAMB": 0.2
+      },
+      "missing": {
+        "MUTTON": "ABSENT here too."
+      }
+    },
+    "benchmark_fixed_cost_per_head": {
+      "note": "Used inside the abattoir's own 'Gayan' DNBP formula in column T: K - ((fixed_cost + M - O - N) / P). Stored only so the PRD 5.2 cross-check can reproduce T. Cannot affect bing_dnbp. Purpose of the 40/34 split is unexplained \u2014 see PRD open decision D7.",
+      "values": {
+        "ACTIVE": 40,
+        "LOADED": 34
+      }
+    }
+  },
+  "open_registries": {
+    "$comment": "OPEN REGISTRIES - rows in a table, admin-managed at runtime. These are a STARTING SET, NOT A LIMIT. Do NOT implement as a Postgres ENUM, Python Enum, or TS string-literal union: adding a species must be an admin form action, not a migration and deploy. The system holds no rule about which livestock the business may trade; it only refuses to invent a DNBP for a species with no configured factor. See PRD 6.9.",
+    "species": {
+      "seed_rows": [
+        "SHEEP",
+        "LAMB",
+        "GOAT",
+        "VEAL",
+        "MUTTON"
+      ],
+      "closed": false,
+      "pricing_prerequisite": "dnbp_factor (PRD 6.5) is REQUIRED before a species can be priced; standard_weight (PRD 6.4) is optional and affects Y/Z/AA only",
+      "unknown_value_handling": "store verbatim, flag it, never reject the row or the file"
+    },
+    "product_type": {
+      "seed_rows": [
+        "CCS",
+        "6 WAY",
+        "FULL BONE"
+      ],
+      "closed": false,
+      "note": "Abattoir cut specs grow over time. Cannot block DNBP - AC does not depend on M."
+    }
+  },
+  "closed_enums": {
+    "$comment": "Genuinely closed. Safe to implement as real enums.",
+    "incoterm": [
+      "CIF",
+      "FAS"
+    ],
+    "lifecycle": [
+      "ACTIVE",
+      "LOADED"
+    ],
+    "benchmark_method": [
+      "GAYAN_FIXED_COST",
+      "FINANCIER_MARGIN",
+      "UNKNOWN"
+    ],
+    "value_source": [
+      "FORMULA",
+      "HAND_SET"
+    ]
+  }
+}

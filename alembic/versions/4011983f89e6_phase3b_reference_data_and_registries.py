@@ -15,6 +15,12 @@ get_active_everhealth_config finds a version on first read, and
 meaningful "before" state to preview a value that has already been live
 since Phase 1 against (§6.5's impact-preview gate protects a *future*
 change, not the data's own introduction).
+
+fixtures/ is vendored inside backend/ (Phase 5 — see backend/fixtures/
+README.md) so this migration is reproducible from a bare checkout; it
+previously reached one level above backend/ into a shared, untracked
+folder, which meant `alembic upgrade head` could never actually complete
+in CI.
 """
 import json
 import uuid
@@ -34,7 +40,7 @@ down_revision: Union[str, None] = '1a0dff07b31d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-_SEED_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "reference-data-seed.json"
+_SEED_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "reference-data-seed.json"
 
 
 def _load_seed() -> dict:

@@ -1,0 +1,1025 @@
+{
+  "$comment": "Golden vectors for the Everhealth DNBP engine. Extracted from the cached computed values of 'Active Purchase Orders 07-08-2026 (WORKING).xlsx'. received_A_to_V is ABATTOIR-OWNED input, stored verbatim and never recomputed. expected_X_to_AF is the EVERHEALTH-OWNED engine output. bing_dnbp (AC) is the SINGLE SOURCE OF TRUTH. Match to 10 decimal places. SCOPE: the engine runs on ACTIVE lines only - loaded orders are already bought and shipped, and exist for P/L analysis only. Every vector below is ACTIVE.",
+  "source_file": "Active Purchase Orders 07-08-2026 (WORKING).xlsx",
+  "source_sheet": "Profitability Analysis",
+  "engine_version": "BingMultiplierV1",
+  "tolerance": 1e-10,
+  "currency": "AUD",
+  "reference_tables_used": {
+    "everhealth_standard_weight_by_species": {
+      "SHEEP": 22,
+      "LAMB": 18,
+      "GOAT": 14,
+      "VEAL": 17
+    },
+    "everhealth_dnbp_factor_by_species": {
+      "SHEEP": 0.83,
+      "LAMB": 0.83,
+      "GOAT": 0.77,
+      "VEAL": 0.5
+    },
+    "everhealth_cif_buffer": 0.3
+  },
+  "blocking_cases": [
+    {
+      "id": "active_mutton_blocks_no_factor",
+      "note": "ACTIVE MUTTON must hard-block. MUTTON has no Everhealth factor or standard weight. Do not guess. NOTE: no such row exists in the supplied data - every real MUTTON row is LOADED. This is a latent guard, not a live break. See PRD D1.",
+      "input": {
+        "species": "MUTTON",
+        "avg_price_aud": 9.710144927536232,
+        "lifecycle": "ACTIVE"
+      },
+      "expect_issues": [
+        {
+          "code": "NO_DNBP_FACTOR",
+          "severity": "BLOCK"
+        }
+      ],
+      "expect_bing_dnbp": null,
+      "expect_publishable": false
+    },
+    {
+      "id": "missing_livestock_cost_still_publishes",
+      "note": "L is missing from the submission. AC does not depend on L, so the DNBP is still correct and publishable; only AB and AF degrade. Raises a CORRECTION request, not a BLOCK.",
+      "input": {
+        "species": "SHEEP",
+        "avg_price_aud": 10.144927536231885,
+        "expected_livestock_cost_per_kg": null
+      },
+      "expect_issues": [
+        {
+          "code": "MISSING_LIVESTOCK_COST",
+          "severity": "CORRECTION"
+        }
+      ],
+      "expect_bing_dnbp": 8.171289855072464,
+      "expect_publishable": true
+    },
+    {
+      "id": "missing_standard_weight_still_publishes",
+      "note": "No standard weight configured. Y/Z/AA/AB/AD unavailable, but AC is unaffected and must still publish.",
+      "input": {
+        "species": "SHEEP",
+        "avg_price_aud": 10.144927536231885,
+        "standard_weight": null
+      },
+      "expect_issues": [
+        {
+          "code": "NO_STANDARD_WEIGHT",
+          "severity": "WARN"
+        }
+      ],
+      "expect_bing_dnbp": 8.171289855072464,
+      "expect_publishable": true
+    },
+    {
+      "id": "loaded_mutton_must_not_block",
+      "note": "REGRESSION GUARD. Contract CED18656 is the only MUTTON row in either supplied file and is LOADED in all three occurrences (07-08 Profitability Analysis r42; 12-08 Orders Loaded r39 and Profitability Analysis r47). Loaded orders never enter the DNBP engine - the buyer already purchased them; they exist for P/L analysis only. No workings row, no DNBP, and NO DNBP-protecting rule may fire. If this test fails, both real workbooks would refuse to publish on ingestion.",
+      "input": {
+        "lifecycle": "LOADED",
+        "contract_no": "CED18656",
+        "customer_name": "JINAN WELCOME INDUSTRIAL",
+        "species": "MUTTON",
+        "loadout_date": "2026-06-29",
+        "qty_kg": 15503.2,
+        "avg_price_aud": 9.710144927536232,
+        "product_type": "CCS",
+        "incoterm": "CIF",
+        "expected_livestock_cost_per_kg": 7.8,
+        "avg_weight_kg": 23.3
+      },
+      "expect_issues": [],
+      "expect_order_workings_row": false,
+      "expect_bing_dnbp": null,
+      "expect_publishable": true,
+      "expect_rules_NOT_fired": [
+        "NO_DNBP_FACTOR",
+        "NO_STANDARD_WEIGHT",
+        "MISSING_SELL_PRICE",
+        "DNBP_BELOW_COST",
+        "DNBP_OUTLIER",
+        "LARGE_BENCHMARK_GAP"
+      ]
+    }
+  ],
+  "vectors": [
+    {
+      "id": "sheep_cif_6way_baseline",
+      "source_row": "Profitability Analysis!row 8",
+      "note": "Baseline CIF SHEEP. K == X because CIF. Standard weight 22.",
+      "lifecycle": "ACTIVE",
+      "engine_config": {
+        "cif_buffer": 0.3,
+        "dnbp_factor_for_species": 0.83,
+        "standard_weight_for_species": 22
+      },
+      "received_A_to_V": {
+        "contract_no": {
+          "column": "B",
+          "value": "CED18650"
+        },
+        "customer_name": {
+          "column": "C",
+          "value": "SHANGHAI NEW SOURCE"
+        },
+        "species": {
+          "column": "D",
+          "value": "SHEEP"
+        },
+        "qty_kg": {
+          "column": "F",
+          "value": 25000
+        },
+        "avg_price_aud": {
+          "column": "G",
+          "value": 10.144927536231885
+        },
+        "amount_aud": {
+          "column": "H",
+          "value": 250000.00000000003
+        },
+        "product_type": {
+          "column": "I",
+          "value": "6 WAY"
+        },
+        "incoterm": {
+          "column": "J",
+          "value": "CIF"
+        },
+        "nrv_per_kg": {
+          "column": "K",
+          "value": 9.844927536231884,
+          "source": "FORMULA"
+        },
+        "expected_livestock_cost_per_kg": {
+          "column": "L",
+          "value": 8.4
+        },
+        "pack_cost_ph": {
+          "column": "M",
+          "value": 4,
+          "source": "FORMULA"
+        },
+        "offal_return_ph": {
+          "column": "N",
+          "value": 8,
+          "source": "FORMULA"
+        },
+        "skin_return_ph": {
+          "column": "O",
+          "value": 10,
+          "source": "FORMULA"
+        },
+        "avg_weight_kg": {
+          "column": "P",
+          "value": 22
+        },
+        "mom_ph": {
+          "column": "Q",
+          "value": 45.78840579710144,
+          "source": "FORMULA"
+        },
+        "dnbp_benchmark": {
+          "column": "T",
+          "value": 8.663109354413702,
+          "source": "FORMULA"
+        },
+        "estimated_heads": {
+          "column": "U",
+          "value": 1136.3636363636363,
+          "source": "FORMULA"
+        },
+        "total_livestock_cost": {
+          "column": "V",
+          "value": 210000,
+          "source": "FORMULA"
+        }
+      },
+      "expected_X_to_AF": {
+        "adjusted_price_per_kg": {
+          "column": "X",
+          "value": 9.844927536231884
+        },
+        "pack_cost_per_kg": {
+          "column": "Y",
+          "value": 0.18181818181818182
+        },
+        "offal_return_per_kg": {
+          "column": "Z",
+          "value": 0.36363636363636365
+        },
+        "skin_return_per_kg": {
+          "column": "AA",
+          "value": 0.45454545454545453
+        },
+        "profit_on_peter_costs": {
+          "column": "AB",
+          "value": 2.08129117259552
+        },
+        "bing_dnbp": {
+          "column": "AC",
+          "value": 8.171289855072464
+        },
+        "profit_on_bing_dnbp": {
+          "column": "AD",
+          "value": 2.310001317523056
+        },
+        "diff_vs_benchmark": {
+          "column": "AE",
+          "value": -0.49181949934123814
+        },
+        "diff_vs_peter": {
+          "column": "AF",
+          "value": -0.22871014492753616
+        }
+      },
+      "dnbp_proof": {
+        "formula": "(avg_price_aud - cif_buffer) * dnbp_factor[species]",
+        "substituted": "(10.144927536231885 - 0.3) * 0.83",
+        "expected": 8.171289855072464,
+        "inputs_used": [
+          "avg_price_aud",
+          "species",
+          "cif_buffer",
+          "dnbp_factor"
+        ],
+        "inputs_NOT_used": [
+          "nrv_per_kg",
+          "expected_livestock_cost_per_kg",
+          "avg_weight_kg",
+          "pack_cost_ph",
+          "offal_return_ph",
+          "skin_return_ph",
+          "standard_weight",
+          "incoterm",
+          "dnbp_benchmark"
+        ]
+      }
+    },
+    {
+      "id": "sheep_cif_actual_weight_28_differs_from_standard_22",
+      "source_row": "Profitability Analysis!row 10",
+      "note": "P=28 but Y/Z/AA still divide by the SHEEP standard weight 22, NOT by P. Guards against 'fixing' the engine to use actual weight.",
+      "lifecycle": "ACTIVE",
+      "engine_config": {
+        "cif_buffer": 0.3,
+        "dnbp_factor_for_species": 0.83,
+        "standard_weight_for_species": 22
+      },
+      "received_A_to_V": {
+        "contract_no": {
+          "column": "B",
+          "value": "CED18653"
+        },
+        "customer_name": {
+          "column": "C",
+          "value": "DALIAN MAGIC INTERNATIONAL"
+        },
+        "species": {
+          "column": "D",
+          "value": "SHEEP"
+        },
+        "qty_kg": {
+          "column": "F",
+          "value": 22000
+        },
+        "avg_price_aud": {
+          "column": "G",
+          "value": 9.710144927536232
+        },
+        "amount_aud": {
+          "column": "H",
+          "value": 210571.42857142858
+        },
+        "product_type": {
+          "column": "I",
+          "value": "6 WAY"
+        },
+        "incoterm": {
+          "column": "J",
+          "value": "CIF"
+        },
+        "nrv_per_kg": {
+          "column": "K",
+          "value": 9.410144927536232,
+          "source": "FORMULA"
+        },
+        "expected_livestock_cost_per_kg": {
+          "column": "L",
+          "value": 8.4
+        },
+        "pack_cost_ph": {
+          "column": "M",
+          "value": 4,
+          "source": "FORMULA"
+        },
+        "offal_return_ph": {
+          "column": "N",
+          "value": 8,
+          "source": "FORMULA"
+        },
+        "skin_return_ph": {
+          "column": "O",
+          "value": 10,
+          "source": "FORMULA"
+        },
+        "avg_weight_kg": {
+          "column": "P",
+          "value": 28
+        },
+        "mom_ph": {
+          "column": "Q",
+          "value": 42.28405797101448,
+          "source": "FORMULA"
+        },
+        "dnbp_benchmark": {
+          "column": "T",
+          "value": 8.481573498964803,
+          "source": "FORMULA"
+        },
+        "estimated_heads": {
+          "column": "U",
+          "value": 785.7142857142857,
+          "source": "FORMULA"
+        },
+        "total_livestock_cost": {
+          "column": "V",
+          "value": 184800,
+          "source": "FORMULA"
+        }
+      },
+      "expected_X_to_AF": {
+        "adjusted_price_per_kg": {
+          "column": "X",
+          "value": 9.410144927536232
+        },
+        "pack_cost_per_kg": {
+          "column": "Y",
+          "value": 0.18181818181818182
+        },
+        "offal_return_per_kg": {
+          "column": "Z",
+          "value": 0.36363636363636365
+        },
+        "skin_return_per_kg": {
+          "column": "AA",
+          "value": 0.45454545454545453
+        },
+        "profit_on_peter_costs": {
+          "column": "AB",
+          "value": 1.6465085638998675
+        },
+        "bing_dnbp": {
+          "column": "AC",
+          "value": 7.810420289855072
+        },
+        "profit_on_bing_dnbp": {
+          "column": "AD",
+          "value": 2.236088274044796
+        },
+        "diff_vs_benchmark": {
+          "column": "AE",
+          "value": -0.6711532091097308
+        },
+        "diff_vs_peter": {
+          "column": "AF",
+          "value": -0.5895797101449283
+        }
+      },
+      "dnbp_proof": {
+        "formula": "(avg_price_aud - cif_buffer) * dnbp_factor[species]",
+        "substituted": "(9.710144927536232 - 0.3) * 0.83",
+        "expected": 7.810420289855072,
+        "inputs_used": [
+          "avg_price_aud",
+          "species",
+          "cif_buffer",
+          "dnbp_factor"
+        ],
+        "inputs_NOT_used": [
+          "nrv_per_kg",
+          "expected_livestock_cost_per_kg",
+          "avg_weight_kg",
+          "pack_cost_ph",
+          "offal_return_ph",
+          "skin_return_ph",
+          "standard_weight",
+          "incoterm",
+          "dnbp_benchmark"
+        ]
+      }
+    },
+    {
+      "id": "goat_cif_ccs_hand_set_skin_return",
+      "source_row": "Profitability Analysis!row 15",
+      "note": "GOAT skin return arrives hand-set to 0.5 though the abattoir table says 0. Received verbatim and used as-is. CCS pack cost 2.",
+      "lifecycle": "ACTIVE",
+      "engine_config": {
+        "cif_buffer": 0.3,
+        "dnbp_factor_for_species": 0.77,
+        "standard_weight_for_species": 14
+      },
+      "received_A_to_V": {
+        "contract_no": {
+          "column": "B",
+          "value": "CED18662"
+        },
+        "customer_name": {
+          "column": "C",
+          "value": "CHONGQING GOUZHAN INDUSTRIAL"
+        },
+        "species": {
+          "column": "D",
+          "value": "GOAT"
+        },
+        "qty_kg": {
+          "column": "F",
+          "value": 17000
+        },
+        "avg_price_aud": {
+          "column": "G",
+          "value": 10.289855072463768
+        },
+        "amount_aud": {
+          "column": "H",
+          "value": 172428.57142857145
+        },
+        "product_type": {
+          "column": "I",
+          "value": "CCS"
+        },
+        "incoterm": {
+          "column": "J",
+          "value": "CIF"
+        },
+        "nrv_per_kg": {
+          "column": "K",
+          "value": 9.989855072463767,
+          "source": "FORMULA"
+        },
+        "expected_livestock_cost_per_kg": {
+          "column": "L",
+          "value": 7.7
+        },
+        "pack_cost_ph": {
+          "column": "M",
+          "value": 2,
+          "source": "FORMULA"
+        },
+        "offal_return_ph": {
+          "column": "N",
+          "value": 6,
+          "source": "FORMULA"
+        },
+        "skin_return_ph": {
+          "column": "O",
+          "value": 0.5,
+          "source": "HAND_SET"
+        },
+        "avg_weight_kg": {
+          "column": "P",
+          "value": 10
+        },
+        "mom_ph": {
+          "column": "Q",
+          "value": 27.398550724637666,
+          "source": "FORMULA"
+        },
+        "dnbp_benchmark": {
+          "column": "T",
+          "value": 6.439855072463767,
+          "source": "FORMULA"
+        },
+        "estimated_heads": {
+          "column": "U",
+          "value": 1700,
+          "source": "FORMULA"
+        },
+        "total_livestock_cost": {
+          "column": "V",
+          "value": 130900,
+          "source": "FORMULA"
+        }
+      },
+      "expected_X_to_AF": {
+        "adjusted_price_per_kg": {
+          "column": "X",
+          "value": 9.989855072463767
+        },
+        "pack_cost_per_kg": {
+          "column": "Y",
+          "value": 0.14285714285714285
+        },
+        "offal_return_per_kg": {
+          "column": "Z",
+          "value": 0.42857142857142855
+        },
+        "skin_return_per_kg": {
+          "column": "AA",
+          "value": 0.03571428571428571
+        },
+        "profit_on_peter_costs": {
+          "column": "AB",
+          "value": 2.611283643892338
+        },
+        "bing_dnbp": {
+          "column": "AC",
+          "value": 7.692188405797101
+        },
+        "profit_on_bing_dnbp": {
+          "column": "AD",
+          "value": 2.6190952380952375
+        },
+        "diff_vs_benchmark": {
+          "column": "AE",
+          "value": 1.2523333333333335
+        },
+        "diff_vs_peter": {
+          "column": "AF",
+          "value": -0.007811594202899563
+        }
+      },
+      "dnbp_proof": {
+        "formula": "(avg_price_aud - cif_buffer) * dnbp_factor[species]",
+        "substituted": "(10.289855072463768 - 0.3) * 0.77",
+        "expected": 7.692188405797101,
+        "inputs_used": [
+          "avg_price_aud",
+          "species",
+          "cif_buffer",
+          "dnbp_factor"
+        ],
+        "inputs_NOT_used": [
+          "nrv_per_kg",
+          "expected_livestock_cost_per_kg",
+          "avg_weight_kg",
+          "pack_cost_ph",
+          "offal_return_ph",
+          "skin_return_ph",
+          "standard_weight",
+          "incoterm",
+          "dnbp_benchmark"
+        ]
+      }
+    },
+    {
+      "id": "veal_fas_buffer_still_deducted",
+      "source_row": "Profitability Analysis!row 18",
+      "note": "CRITICAL: FAS line. K = G (no deduction) but X = G - 0.30 anyway. Proves the buffer is universal in X. Also the VEAL factor 0.50.",
+      "lifecycle": "ACTIVE",
+      "engine_config": {
+        "cif_buffer": 0.3,
+        "dnbp_factor_for_species": 0.5,
+        "standard_weight_for_species": 17
+      },
+      "received_A_to_V": {
+        "contract_no": {
+          "column": "B",
+          "value": "CEDD7045"
+        },
+        "customer_name": {
+          "column": "C",
+          "value": "AGRICOMM"
+        },
+        "species": {
+          "column": "D",
+          "value": "VEAL"
+        },
+        "qty_kg": {
+          "column": "F",
+          "value": 25000
+        },
+        "avg_price_aud": {
+          "column": "G",
+          "value": 6.85
+        },
+        "amount_aud": {
+          "column": "H",
+          "value": 171250
+        },
+        "product_type": {
+          "column": "I",
+          "value": "6 WAY"
+        },
+        "incoterm": {
+          "column": "J",
+          "value": "FAS"
+        },
+        "nrv_per_kg": {
+          "column": "K",
+          "value": 6.85,
+          "source": "FORMULA"
+        },
+        "expected_livestock_cost_per_kg": {
+          "column": "L",
+          "value": 3.2
+        },
+        "pack_cost_ph": {
+          "column": "M",
+          "value": 4,
+          "source": "FORMULA"
+        },
+        "offal_return_ph": {
+          "column": "N",
+          "value": 11,
+          "source": "FORMULA"
+        },
+        "skin_return_ph": {
+          "column": "O",
+          "value": 12,
+          "source": "FORMULA"
+        },
+        "avg_weight_kg": {
+          "column": "P",
+          "value": 17
+        },
+        "mom_ph": {
+          "column": "Q",
+          "value": 81.04999999999998,
+          "source": "FORMULA"
+        },
+        "dnbp_benchmark": {
+          "column": "T",
+          "value": 5.614705882352941,
+          "source": "FORMULA"
+        },
+        "estimated_heads": {
+          "column": "U",
+          "value": 1470.5882352941176,
+          "source": "FORMULA"
+        },
+        "total_livestock_cost": {
+          "column": "V",
+          "value": 80000,
+          "source": "FORMULA"
+        }
+      },
+      "expected_X_to_AF": {
+        "adjusted_price_per_kg": {
+          "column": "X",
+          "value": 6.55
+        },
+        "pack_cost_per_kg": {
+          "column": "Y",
+          "value": 0.23529411764705882
+        },
+        "offal_return_per_kg": {
+          "column": "Z",
+          "value": 0.6470588235294118
+        },
+        "skin_return_per_kg": {
+          "column": "AA",
+          "value": 0.7058823529411765
+        },
+        "profit_on_peter_costs": {
+          "column": "AB",
+          "value": 4.467647058823529
+        },
+        "bing_dnbp": {
+          "column": "AC",
+          "value": 3.275
+        },
+        "profit_on_bing_dnbp": {
+          "column": "AD",
+          "value": 4.392647058823529
+        },
+        "diff_vs_benchmark": {
+          "column": "AE",
+          "value": -2.339705882352941
+        },
+        "diff_vs_peter": {
+          "column": "AF",
+          "value": 0.07499999999999973
+        }
+      },
+      "dnbp_proof": {
+        "formula": "(avg_price_aud - cif_buffer) * dnbp_factor[species]",
+        "substituted": "(6.85 - 0.3) * 0.5",
+        "expected": 3.275,
+        "inputs_used": [
+          "avg_price_aud",
+          "species",
+          "cif_buffer",
+          "dnbp_factor"
+        ],
+        "inputs_NOT_used": [
+          "nrv_per_kg",
+          "expected_livestock_cost_per_kg",
+          "avg_weight_kg",
+          "pack_cost_ph",
+          "offal_return_ph",
+          "skin_return_ph",
+          "standard_weight",
+          "incoterm",
+          "dnbp_benchmark"
+        ]
+      }
+    },
+    {
+      "id": "lamb_fas_ccs_standard_weight_18",
+      "source_row": "Profitability Analysis!row 24",
+      "note": "LAMB standard weight is 18 (engine table), NOT 19 (the unused reference table). Y=2/18, Z=11/18, AA=10/18.",
+      "lifecycle": "ACTIVE",
+      "engine_config": {
+        "cif_buffer": 0.3,
+        "dnbp_factor_for_species": 0.83,
+        "standard_weight_for_species": 18
+      },
+      "received_A_to_V": {
+        "contract_no": {
+          "column": "B",
+          "value": "CEDD7062"
+        },
+        "customer_name": {
+          "column": "C",
+          "value": "STELLA FOODS"
+        },
+        "species": {
+          "column": "D",
+          "value": "LAMB"
+        },
+        "qty_kg": {
+          "column": "F",
+          "value": 17000
+        },
+        "avg_price_aud": {
+          "column": "G",
+          "value": 11.6
+        },
+        "amount_aud": {
+          "column": "H",
+          "value": 197200
+        },
+        "product_type": {
+          "column": "I",
+          "value": "CCS"
+        },
+        "incoterm": {
+          "column": "J",
+          "value": "FAS"
+        },
+        "nrv_per_kg": {
+          "column": "K",
+          "value": 11.6,
+          "source": "FORMULA"
+        },
+        "expected_livestock_cost_per_kg": {
+          "column": "L",
+          "value": 10.5
+        },
+        "pack_cost_ph": {
+          "column": "M",
+          "value": 2,
+          "source": "FORMULA"
+        },
+        "offal_return_ph": {
+          "column": "N",
+          "value": 11,
+          "source": "FORMULA"
+        },
+        "skin_return_ph": {
+          "column": "O",
+          "value": 10,
+          "source": "FORMULA"
+        },
+        "avg_weight_kg": {
+          "column": "P",
+          "value": 18
+        },
+        "mom_ph": {
+          "column": "Q",
+          "value": 38.8,
+          "source": "FORMULA"
+        },
+        "dnbp_benchmark": {
+          "column": "T",
+          "value": 10.433333333333334,
+          "source": "FORMULA"
+        },
+        "estimated_heads": {
+          "column": "U",
+          "value": 944.4444444444445,
+          "source": "FORMULA"
+        },
+        "total_livestock_cost": {
+          "column": "V",
+          "value": 178500,
+          "source": "FORMULA"
+        }
+      },
+      "expected_X_to_AF": {
+        "adjusted_price_per_kg": {
+          "column": "X",
+          "value": 11.299999999999999
+        },
+        "pack_cost_per_kg": {
+          "column": "Y",
+          "value": 0.1111111111111111
+        },
+        "offal_return_per_kg": {
+          "column": "Z",
+          "value": 0.6111111111111112
+        },
+        "skin_return_per_kg": {
+          "column": "AA",
+          "value": 0.5555555555555556
+        },
+        "profit_on_peter_costs": {
+          "column": "AB",
+          "value": 1.8555555555555545
+        },
+        "bing_dnbp": {
+          "column": "AC",
+          "value": 9.378999999999998
+        },
+        "profit_on_bing_dnbp": {
+          "column": "AD",
+          "value": 2.9765555555555565
+        },
+        "diff_vs_benchmark": {
+          "column": "AE",
+          "value": -1.0543333333333358
+        },
+        "diff_vs_peter": {
+          "column": "AF",
+          "value": -1.1210000000000022
+        }
+      },
+      "dnbp_proof": {
+        "formula": "(avg_price_aud - cif_buffer) * dnbp_factor[species]",
+        "substituted": "(11.6 - 0.3) * 0.83",
+        "expected": 9.378999999999998,
+        "inputs_used": [
+          "avg_price_aud",
+          "species",
+          "cif_buffer",
+          "dnbp_factor"
+        ],
+        "inputs_NOT_used": [
+          "nrv_per_kg",
+          "expected_livestock_cost_per_kg",
+          "avg_weight_kg",
+          "pack_cost_ph",
+          "offal_return_ph",
+          "skin_return_ph",
+          "standard_weight",
+          "incoterm",
+          "dnbp_benchmark"
+        ]
+      }
+    },
+    {
+      "id": "lamb_fas_full_bone_pack_cost_7",
+      "source_row": "Profitability Analysis!row 31",
+      "note": "FULL BONE pack cost 7. Negative-ish margin territory; AF strongly negative.",
+      "lifecycle": "ACTIVE",
+      "engine_config": {
+        "cif_buffer": 0.3,
+        "dnbp_factor_for_species": 0.83,
+        "standard_weight_for_species": 18
+      },
+      "received_A_to_V": {
+        "contract_no": {
+          "column": "B",
+          "value": "CEDD7085"
+        },
+        "customer_name": {
+          "column": "C",
+          "value": "BOUNTY FOODS "
+        },
+        "species": {
+          "column": "D",
+          "value": "LAMB"
+        },
+        "qty_kg": {
+          "column": "F",
+          "value": 8100
+        },
+        "avg_price_aud": {
+          "column": "G",
+          "value": 10.375
+        },
+        "amount_aud": {
+          "column": "H",
+          "value": 83800
+        },
+        "product_type": {
+          "column": "I",
+          "value": "FULL BONE"
+        },
+        "incoterm": {
+          "column": "J",
+          "value": "FAS"
+        },
+        "nrv_per_kg": {
+          "column": "K",
+          "value": 10.375,
+          "source": "FORMULA"
+        },
+        "expected_livestock_cost_per_kg": {
+          "column": "L",
+          "value": 10.5
+        },
+        "pack_cost_ph": {
+          "column": "M",
+          "value": 7,
+          "source": "FORMULA"
+        },
+        "offal_return_ph": {
+          "column": "N",
+          "value": 11,
+          "source": "FORMULA"
+        },
+        "skin_return_ph": {
+          "column": "O",
+          "value": 10,
+          "source": "FORMULA"
+        },
+        "avg_weight_kg": {
+          "column": "P",
+          "value": 18
+        },
+        "mom_ph": {
+          "column": "Q",
+          "value": 11.75,
+          "source": "FORMULA"
+        },
+        "dnbp_benchmark": {
+          "column": "T",
+          "value": 8.930555555555555,
+          "source": "FORMULA"
+        },
+        "estimated_heads": {
+          "column": "U",
+          "value": 450,
+          "source": "FORMULA"
+        },
+        "total_livestock_cost": {
+          "column": "V",
+          "value": 85050,
+          "source": "FORMULA"
+        }
+      },
+      "expected_X_to_AF": {
+        "adjusted_price_per_kg": {
+          "column": "X",
+          "value": 10.075
+        },
+        "pack_cost_per_kg": {
+          "column": "Y",
+          "value": 0.3888888888888889
+        },
+        "offal_return_per_kg": {
+          "column": "Z",
+          "value": 0.6111111111111112
+        },
+        "skin_return_per_kg": {
+          "column": "AA",
+          "value": 0.5555555555555556
+        },
+        "profit_on_peter_costs": {
+          "column": "AB",
+          "value": 0.3527777777777772
+        },
+        "bing_dnbp": {
+          "column": "AC",
+          "value": 8.36225
+        },
+        "profit_on_bing_dnbp": {
+          "column": "AD",
+          "value": 2.4905277777777775
+        },
+        "diff_vs_benchmark": {
+          "column": "AE",
+          "value": -0.5683055555555558
+        },
+        "diff_vs_peter": {
+          "column": "AF",
+          "value": -2.1377500000000005
+        }
+      },
+      "dnbp_proof": {
+        "formula": "(avg_price_aud - cif_buffer) * dnbp_factor[species]",
+        "substituted": "(10.375 - 0.3) * 0.83",
+        "expected": 8.36225,
+        "inputs_used": [
+          "avg_price_aud",
+          "species",
+          "cif_buffer",
+          "dnbp_factor"
+        ],
+        "inputs_NOT_used": [
+          "nrv_per_kg",
+          "expected_livestock_cost_per_kg",
+          "avg_weight_kg",
+          "pack_cost_ph",
+          "offal_return_ph",
+          "skin_return_ph",
+          "standard_weight",
+          "incoterm",
+          "dnbp_benchmark"
+        ]
+      }
+    }
+  ]
+}

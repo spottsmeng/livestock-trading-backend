@@ -50,9 +50,9 @@ class EverhealthConfig:
     def from_seed_json(cls, path: str | Path) -> "EverhealthConfig":
         """Build a config from fixtures/reference-data-seed.json's shape (or
         any file matching it). The caller supplies the path explicitly —
-        this module does not assume where the seed file lives relative to
-        the repo, since backend/ and the fixtures/ directory are separate
-        git repos (see docs)."""
+        this module stays a pure, filesystem-agnostic dataclass loader and
+        never hardcodes where the seed file lives (callers like
+        core/reference_data.py and tests/engine/helpers.py own that)."""
         data = json.loads(Path(path).read_text())
         everhealth = data["everhealth"]
         return cls.from_values(

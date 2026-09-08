@@ -1,0 +1,46 @@
+{
+  "$comment": "Golden vectors for PRD §12.3's Bid Check calculator (domain/buyer/bidcheck.py and frontend/lib/buyer/bidcheck.ts). Both implementations must agree on every vector, to 2 decimal places on money fields and exactly on status/is_breach. close_threshold_pct mirrors the seed config's bid_check_close_threshold_pct (5).",
+  "close_threshold_pct": 5,
+  "vectors": [
+    {
+      "name": "clear pass",
+      "price_per_head": "150.00",
+      "weight_kg": "20.0",
+      "dnbp_per_kg": "9.00",
+      "implied_price_per_kg": "7.5",
+      "status": "PASS",
+      "is_breach": false,
+      "max_price_per_head": "180.00"
+    },
+    {
+      "name": "close to ceiling",
+      "price_per_head": "174.00",
+      "weight_kg": "20.0",
+      "dnbp_per_kg": "9.00",
+      "implied_price_per_kg": "8.7",
+      "status": "CLOSE",
+      "is_breach": false,
+      "max_price_per_head": "180.00"
+    },
+    {
+      "name": "breach",
+      "price_per_head": "178.00",
+      "weight_kg": "19.0",
+      "dnbp_per_kg": "8.17",
+      "implied_price_per_kg": "9.368421052631578947368421053",
+      "status": "BREACH",
+      "is_breach": true,
+      "max_price_per_head": "155.23"
+    },
+    {
+      "name": "exactly on the ceiling is CLOSE (0% headroom), not a breach",
+      "price_per_head": "180.00",
+      "weight_kg": "20.0",
+      "dnbp_per_kg": "9.00",
+      "implied_price_per_kg": "9",
+      "status": "CLOSE",
+      "is_breach": false,
+      "max_price_per_head": "180.00"
+    }
+  ]
+}

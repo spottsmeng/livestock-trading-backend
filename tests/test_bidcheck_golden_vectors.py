@@ -3,7 +3,9 @@
 engine, applied to domain/buyer/bidcheck.py. frontend/lib/buyer/bidcheck.ts
 is a line-for-line TS mirror verified against the same file (no JS test
 runner exists yet in this repo to automate that side — see this phase's
-plan for why that's a deliberate, named gap rather than an oversight)."""
+plan for why that's a deliberate, named gap rather than an oversight).
+
+fixtures/ is vendored inside backend/ — see backend/fixtures/README.md."""
 
 import json
 from decimal import Decimal
@@ -13,7 +15,7 @@ import pytest
 
 from domain.buyer.bidcheck import score_bid
 
-FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "bidcheck-test-vectors.json"
+FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "bidcheck-test-vectors.json"
 
 
 def _load_vectors() -> list[dict]:

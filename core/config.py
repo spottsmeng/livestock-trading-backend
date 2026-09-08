@@ -66,10 +66,11 @@ class Settings(BaseSettings):
     object_storage_secret_access_key: str = ""
 
     # Phase 2 — where EverhealthConfig loads its seed values from (§6).
-    # Defaults to fixtures/reference-data-seed.json one level up from
-    # backend/ — the two are separate git repos (see docs), sharing this
-    # parent folder on disk only, so the path is deliberately not baked
-    # into domain/engine/config.py itself.
+    # Defaults to backend/fixtures/reference-data-seed.json (vendored —
+    # see backend/fixtures/README.md for why); override only for a
+    # genuinely different seed source (e.g. a test fixture), which is why
+    # this stays a setting rather than a hardcoded path in
+    # domain/engine/config.py itself.
     reference_data_seed_path: str | None = None
 
     # Ephemeral parse-preview cache TTL (§7.3's upload -> preview -> commit
