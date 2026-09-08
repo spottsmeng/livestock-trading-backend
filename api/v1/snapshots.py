@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -7,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import CurrentUser, redis_dep, require_role
 from core.db import get_db
-from core.errors import NotFound
+from core.errors import Conflict, NotFound
 from core.object_storage import ObjectStorage, get_object_storage
+from domain.engine.issues import Severity
 from domain.engine.workings import Lifecycle
 from models.enums import Role, SnapshotStatus
 from repositories import order_lines as order_lines_repo
@@ -22,7 +24,7 @@ from schemas.snapshots import (
     SnapshotResponse,
     UploadPreviewResponse,
 )
-from services import calculate_service, ingestion_service
+from services import audit_service, calculate_service, ingestion_service
 
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
@@ -162,3 +164,43 @@ async def list_issues(
     await _get_owned_snapshot(db, snapshot_id, current.org_id)
     issues = await validation_issues_repo.list_by_snapshot(db, snapshot_id)
     return [IssueResponse.model_validate(i) for i in issues]
+
+
+@router.post("/{snapshot_id}/issues/{issue_id}/acknowledge", response_model=IssueResponse)
+async def acknowledge_issue(
+    snapshot_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    current: CurrentUser = Depends(_trading_console),
+    db: AsyncSession = Depends(get_db),
+) -> IssueResponse:
+    """§5.7's publication gate, the other half of it: a WARN/CORRECTION
+    issue on an active line must be explicitly acknowledged, with the
+    acknowledger's id and a timestamp, before a publication can proceed
+    (services/publication_service.py enforces this). Deferred from Phase 2
+    by design — tied to publication, which didn't exist yet (§18)."""
+    await _get_owned_snapshot(db, snapshot_id, current.org_id)
+    issue = await validation_issues_repo.get_by_id(db, issue_id)
+    if issue is None:
+        raise NotFound("Issue")
+    order_line = await order_lines_repo.get_by_id(db, issue.order_line_id)
+    if order_line is None or order_line.snapshot_id != snapshot_id:
+        raise NotFound("Issue")
+    if issue.severity is Severity.BLOCK:
+        raise Conflict(
+            "CANNOT_ACKNOWLEDGE_BLOCK",
+            "A BLOCK issue cannot be acknowledged away — it can only be resolved by a corrected submission.",
+        )
+
+    issue.acknowledged_by = current.user_id
+    issue.acknowledged_at = datetime.now(UTC)
+
+    await audit_service.write(
+        db,
+        actor_id=current.user_id,
+        action="issue.acknowledged",
+        entity="validation_issue",
+        entity_id=issue.id,
+        after={"code": issue.code, "severity": issue.severity.value},
+    )
+    await db.commit()
+    return IssueResponse.model_validate(issue)

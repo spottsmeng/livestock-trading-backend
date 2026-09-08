@@ -117,3 +117,39 @@ class SnapshotNotCalculated(AppError):
             "This snapshot has not been calculated yet.",
             status_code=409,
         )
+
+
+class PublicationBlocked(AppError):
+    def __init__(self, blocked_line_ids: list[str]) -> None:
+        super().__init__(
+            "PUBLICATION_BLOCKED",
+            "One or more active lines have a BLOCK issue — publication is refused (§5.7).",
+            status_code=409,
+            details={"blocked_order_line_ids": blocked_line_ids},
+        )
+
+
+class IssuesNotAcknowledged(AppError):
+    def __init__(self, issue_ids: list[str]) -> None:
+        super().__init__(
+            "ISSUES_NOT_ACKNOWLEDGED",
+            "Every WARN/CORRECTION issue on an active line must be acknowledged before publishing.",
+            status_code=409,
+            details={"unacknowledged_issue_ids": issue_ids},
+        )
+
+
+class NothingToPublish(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "NOTHING_TO_PUBLISH",
+            "No active line in this snapshot has a computed DNBP to publish.",
+            status_code=409,
+        )
+
+
+class TicketInvalid(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "TICKET_INVALID", "This connection ticket is invalid, expired, or already used.", status_code=401
+        )

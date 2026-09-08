@@ -70,5 +70,27 @@ class Settings(BaseSettings):
     # flow) — long enough for Bing to review a preview before confirming.
     upload_preview_ttl_seconds: int = 1800
 
+    # Phase 3 — Web Push (VAPID, §10). pywebpush is MPL-2.0/FOSS regardless
+    # of which browser push service (Chrome/FCM, Firefox, Apple) the
+    # subscription's own endpoint points at — no proprietary SDK involved.
+    # Generate a real pair with `uv run python -m scripts.generate_vapid_keys`
+    # before a real deployment; these defaults are dev-only placeholders and
+    # produce a working (self-consistent) key pair, just not a secret one.
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_claim_email: str = "admin@example.com"
+
+    # Phase 3 — WS ticket auth (§9.9). Native WebSocket can't carry a
+    # bearer header, so a short-lived, single-use ticket (issued via an
+    # authenticated REST call) stands in for it. Short enough that a leaked
+    # ticket (e.g. in a browser history/log) is useless almost immediately.
+    ws_ticket_ttl_seconds: int = 30
+
+    # Phase 3 — §10's "alert the publisher if unacknowledged after 15
+    # minutes" escalation threshold. Computed on demand (no worker/cron
+    # introduced this phase — see services/escalation.py), so this is read
+    # wherever a publication's delivery state is fetched.
+    delivery_escalation_minutes: int = 15
+
 
 settings = Settings()

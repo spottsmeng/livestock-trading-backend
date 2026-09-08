@@ -18,6 +18,11 @@ DEV_PASSWORD = "TestPassword123!"  # noqa: S105 — fixture-only, never a real c
 
 # Truncate order matters: children before parents (FK constraints).
 _TABLES_IN_DELETE_ORDER = [
+    "buy_entries",
+    "dnbp_publication_lines",
+    "dnbp_publication_deliveries",
+    "dnbp_publications",
+    "push_subscriptions",
     "validation_issues",
     "correction_requests",
     "order_workings",

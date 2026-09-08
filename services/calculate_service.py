@@ -12,7 +12,7 @@ order_workings.py's `upsert`, repositories/validation_issues.py's
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,7 @@ from core.reference_data import get_everhealth_config
 from domain.engine import crosscheck
 from domain.engine import issues as codes
 from domain.engine.crosscheck import AbattoirReferenceTables
-from domain.engine.issues import Severity, ValidationIssue
+from domain.engine.issues import Severity, ValidationIssue, check_dnbp_outlier
 from domain.engine.workings import Lifecycle, OrderLineInput, compute_order_workings
 from domain.ingestion.types import BenchmarkMethod
 from models.enums import CorrectionStatus
@@ -31,9 +31,12 @@ from models.validation_issue import ValidationIssueRecord
 from repositories import correction_requests as correction_requests_repo
 from repositories import order_lines as order_lines_repo
 from repositories import order_workings as order_workings_repo
+from repositories import publications as publications_repo
 from repositories import validation_issues as validation_issues_repo
 from services import audit_service
 from services.ingestion_service import deserialize_abattoir_tables
+
+DNBP_OUTLIER_LOOKBACK_DAYS = 30  # §5.7 — "> 15% off recent average" is a trailing 30-day species mean
 
 ENGINE_VERSION = "BingMultiplierV1"  # §5.6 — the one shipped, publishable engine method
 
@@ -167,6 +170,23 @@ def _hand_set_issues(order_line: OrderLine) -> list[ValidationIssue]:
     ]
 
 
+async def _check_dnbp_outlier(
+    db: AsyncSession, snapshot: OrderSnapshot, workings, species: str | None
+) -> list[ValidationIssue]:
+    """§5.7 `DNBP_OUTLIER` — deferred by Phase 2's own instructions
+    ("nothing has been published yet"); buildable now that
+    dnbp_publications/dnbp_publication_lines exist (Phase 3). The 30-day
+    average is scoped to this org only — a species average from before
+    this org's own publication history began is simply None (no history),
+    never a cross-org or synthetic baseline."""
+    if workings is None or workings.bing_dnbp is None or species is None:
+        return []
+    since = datetime.now(UTC) - timedelta(days=DNBP_OUTLIER_LOOKBACK_DAYS)
+    average = await publications_repo.recent_species_average(db, snapshot.org_id, species, since=since)
+    issue = check_dnbp_outlier(workings.bing_dnbp, average)
+    return [issue] if issue else []
+
+
 async def calculate_snapshot(db: AsyncSession, snapshot: OrderSnapshot, *, actor_id: uuid.UUID) -> dict:
     config = get_everhealth_config()
     abattoir_tables = deserialize_abattoir_tables(snapshot.abattoir_reference_tables)
@@ -180,11 +200,13 @@ async def calculate_snapshot(db: AsyncSession, snapshot: OrderSnapshot, *, actor
 
         crosscheck_issues: list[ValidationIssue] = []
         hand_set_issues: list[ValidationIssue] = []
+        outlier_issues: list[ValidationIssue] = []
         if order_line.lifecycle is Lifecycle.ACTIVE:
             crosscheck_issues = _run_crosscheck(order_line, abattoir_tables)
             hand_set_issues = _hand_set_issues(order_line)
+            outlier_issues = await _check_dnbp_outlier(db, snapshot, workings, order_line.species)
 
-        all_issues = [*engine_issues, *crosscheck_issues, *hand_set_issues]
+        all_issues = [*engine_issues, *crosscheck_issues, *hand_set_issues, *outlier_issues]
 
         if workings is not None:
             model = OrderWorkings(

@@ -9,6 +9,7 @@ real versioned table lands.
 """
 
 import json
+from dataclasses import dataclass
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
@@ -41,3 +42,29 @@ def get_abattoir_fixed_costs() -> tuple[Decimal, Decimal]:
     data = json.loads(_seed_path().read_text())
     values = data["abattoir"]["benchmark_fixed_cost_per_head"]["values"]
     return Decimal(str(values["ACTIVE"])), Decimal(str(values["LOADED"]))
+
+
+@dataclass(frozen=True, slots=True)
+class OperationalConstants:
+    """§6.7's operational tunables that Phase 3 needs and Phase 1/2 had no
+    use for yet: Bid Check's PASS/CLOSE threshold (§12.3), the buyer's
+    displayed weight band tolerance around a species' standard weight
+    (§12.2, D10), and the "instruction is stale" banner threshold (§3,
+    §12.2). None of these are source-of-truth inputs (§6.5) — they tune
+    supporting UX, not `AC` — so they carry none of the impact-preview/
+    audit machinery reserved for the DNBP factor table and cif_buffer."""
+
+    bid_check_close_threshold_pct: Decimal
+    buyer_weight_band_tolerance_pct: Decimal
+    stale_instruction_hours: int
+
+
+@lru_cache
+def get_operational_constants() -> OperationalConstants:
+    data = json.loads(_seed_path().read_text())
+    values = data["everhealth"]["operational_constants"]
+    return OperationalConstants(
+        bid_check_close_threshold_pct=Decimal(str(values["bid_check_close_threshold_pct"])),
+        buyer_weight_band_tolerance_pct=Decimal(str(values["buyer_weight_band_tolerance_pct"])),
+        stale_instruction_hours=int(values["stale_instruction_hours"]),
+    )

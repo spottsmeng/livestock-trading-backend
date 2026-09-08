@@ -43,3 +43,25 @@ class CorrectionStatus(enum.StrEnum):
     OPEN = "OPEN"
     RESOLVED = "RESOLVED"
     WITHDRAWN = "WITHDRAWN"
+
+
+class DeliveryChannel(enum.StrEnum):
+    """§9.9/§10 — which of the three redundant channels actually delivered
+    a publication to a buyer. Recorded per delivery, not per buyer, since
+    a buyer may end up reached by more than one channel."""
+
+    WS = "WS"
+    PUSH = "PUSH"
+    POLL = "POLL"
+
+
+class BuyEntrySyncStatus(enum.StrEnum):
+    """§8/§12.7. A row only ever exists here once POST /buyer/entries has
+    succeeded, so server-side existence already implies SYNCED — the
+    richer queued/syncing client states live only in the PWA's IndexedDB
+    (lib/buyer/db.ts) and never reach this table. CONFLICT is reserved for
+    a client_uuid resubmitted with materially different field values,
+    which the sync service flags rather than silently overwriting."""
+
+    SYNCED = "SYNCED"
+    CONFLICT = "CONFLICT"
