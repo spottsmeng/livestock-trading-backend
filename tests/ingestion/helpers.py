@@ -1,15 +1,17 @@
 """Shared test-only helpers for parsing the two real supplied workbooks.
-Path resolution mirrors tests/engine/helpers.py's own convention."""
+Path resolution mirrors tests/engine/helpers.py's own convention — both
+workbooks are vendored into backend/fixtures/ (see that directory's
+README.md)."""
 
 from decimal import Decimal
 from pathlib import Path
 
 from domain.ingestion.workbook import ParsedSnapshot, parse
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 
-FILE_07_08 = PROJECT_ROOT / "Active Purchase Orders 07-08-2026 (WORKING).xlsx"
-FILE_12_08 = PROJECT_ROOT / "Active Purchase Orders 12-08-2026.xlsx"
+FILE_07_08 = FIXTURES_DIR / "Active Purchase Orders 07-08-2026 (WORKING).xlsx"
+FILE_12_08 = FIXTURES_DIR / "Active Purchase Orders 12-08-2026.xlsx"
 
 DEFAULT_CIF_BUFFER = Decimal("0.30")
 DEFAULT_FIXED_COST_ACTIVE = Decimal(40)

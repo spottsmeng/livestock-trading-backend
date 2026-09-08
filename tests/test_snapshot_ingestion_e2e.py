@@ -17,8 +17,8 @@ from models.enums import Role
 from models.organisation import Organisation
 from tests.conftest import DEV_PASSWORD, make_active_user
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FILE_07_08 = PROJECT_ROOT / "Active Purchase Orders 07-08-2026 (WORKING).xlsx"
+FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
+FILE_07_08 = FIXTURES_DIR / "Active Purchase Orders 07-08-2026 (WORKING).xlsx"
 
 
 async def _accountant_headers(client, db: AsyncSession, org: Organisation) -> dict:
