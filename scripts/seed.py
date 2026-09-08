@@ -71,8 +71,8 @@ async def main() -> None:
         await _get_or_create_org(session, OrgKind.BUYER_CO, "External Buyer Co.")
 
         print("Seeded demo accounts (local dev only):")
-        await _seed_user(session, org=everhealth, email="bobby@example.com", role=Role.OWNER, with_mfa=True)
-        await _seed_user(session, org=everhealth, email="bing@example.com", role=Role.ACCOUNTANT, with_mfa=True)
+        await _seed_user(session, org=everhealth, email="bobby@example.com", role=Role.OWNER, with_mfa=False)
+        await _seed_user(session, org=everhealth, email="bing@example.com", role=Role.ACCOUNTANT, with_mfa=False)
         await _seed_user(session, org=everhealth, email="buyer@example.com", role=Role.BUYER, with_mfa=False)
 
         await session.commit()
