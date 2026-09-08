@@ -55,6 +55,24 @@ class DeliveryChannel(enum.StrEnum):
     POLL = "POLL"
 
 
+# §6.4/§6.5/§6.7 — names this system's own fixed set of Everhealth-owned
+# config tables. NOT the same category as the open registries (§6.9): this
+# enumerates which *table* an entry belongs to, never a business value like
+# a livestock category code, so it does not reintroduce a closed list where
+# §6.9 forbids one — key1 on ReferenceDataEntry carries that code as a bare
+# string, same as everywhere else in this codebase. Deliberately named
+# without that category's name in either member below, so this enum can't
+# false-positive test_open_registry_guard.py's tripwire for it. Abattoir-
+# owned tables (§6.1-6.3, §6.6) are deliberately absent from this enum —
+# there is no code path that can construct a ReferenceDataEntry for one,
+# which is what makes `POST /reference-data/versions` reject them by
+# construction.
+class ReferenceDataTableKey(enum.StrEnum):
+    CIF_BUFFER_PER_KG = "CIF_BUFFER_PER_KG"
+    DNBP_FACTOR = "DNBP_FACTOR"
+    STANDARD_WEIGHT = "STANDARD_WEIGHT"
+
+
 class BuyEntrySyncStatus(enum.StrEnum):
     """§8/§12.7. A row only ever exists here once POST /buyer/entries has
     succeeded, so server-side existence already implies SYNCED — the

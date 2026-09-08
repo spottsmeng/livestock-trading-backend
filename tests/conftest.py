@@ -1,3 +1,8 @@
+import json
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from pathlib import Path
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
@@ -9,10 +14,13 @@ from core.config import settings
 from core.db import Base, get_db
 from core.security import generate_totp_secret, hash_password
 from main import app
-from models.enums import InviteStatus, OrgKind, Role
+from models.enums import InviteStatus, OrgKind, ReferenceDataTableKey, Role
 from models.organisation import Organisation
+from models.reference_data import ProductTypeRegistry, ReferenceDataEntry, ReferenceDataVersion, SpeciesRegistry
 from models.user import User
 from models.user_role import UserRole
+
+_SEED_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "reference-data-seed.json"
 
 DEV_PASSWORD = "TestPassword123!"  # noqa: S105 — fixture-only, never a real credential
 
@@ -25,9 +33,14 @@ _TABLES_IN_DELETE_ORDER = [
     "push_subscriptions",
     "validation_issues",
     "correction_requests",
+    "reference_data_drift",
     "order_workings",
     "order_lines",
     "order_snapshots",
+    "reference_data_entries",
+    "reference_data_versions",
+    "species_registry",
+    "product_type_registry",
     "audit_log",
     "refresh_tokens",
     "user_roles",
@@ -129,6 +142,64 @@ async def redis_client():
     await client.flushdb()
     del app.dependency_overrides[redis_dep]
     await client.aclose()
+
+
+@pytest.fixture(autouse=True)
+async def _seed_reference_data(db: AsyncSession):
+    """Every test gets an active reference_data_versions row, mirroring
+    what the phase3b_reference_data_and_registries migration seeds in real
+    environments (Base.metadata.create_all above does not run data
+    migrations, only DDL — see _test_database_schema's own docstring for
+    why tests deliberately don't go through Alembic). Same seed file, same
+    values, so calculate_service/ingestion_service/publication_service see
+    the exact factors/weights/buffer every test has always run against."""
+    data = json.loads(_SEED_PATH.read_text())
+    everhealth = data["everhealth"]
+
+    version = ReferenceDataVersion(
+        effective_from=datetime.combine(date.fromisoformat(data["effective_from"]), datetime.min.time(), tzinfo=UTC),
+        created_by=None,
+        note="test fixture seed",
+        is_active=True,
+        activated_at=datetime.now(UTC),
+        impact_previewed_at=datetime.now(UTC),
+    )
+    db.add(version)
+    await db.flush()
+
+    db.add(
+        ReferenceDataEntry(
+            version_id=version.id,
+            table_key=ReferenceDataTableKey.CIF_BUFFER_PER_KG,
+            key1=None,
+            value=Decimal(str(everhealth["cif_buffer_per_kg"]["value"])),
+        )
+    )
+    for species, factor in everhealth["dnbp_factor_by_species"]["values"].items():
+        db.add(
+            ReferenceDataEntry(
+                version_id=version.id,
+                table_key=ReferenceDataTableKey.DNBP_FACTOR,
+                key1=species,
+                value=Decimal(str(factor)),
+            )
+        )
+    for species, weight in everhealth["standard_weight_by_species"]["values"].items():
+        db.add(
+            ReferenceDataEntry(
+                version_id=version.id,
+                table_key=ReferenceDataTableKey.STANDARD_WEIGHT,
+                key1=species,
+                value=Decimal(str(weight)),
+            )
+        )
+
+    for code in data["open_registries"]["species"]["seed_rows"]:
+        db.add(SpeciesRegistry(code=code, display_name=code.title(), is_active=True, created_by=None))
+    for code in data["open_registries"]["product_type"]["seed_rows"]:
+        db.add(ProductTypeRegistry(code=code, display_name=code, is_active=True, created_by=None))
+
+    await db.commit()
 
 
 @pytest.fixture(autouse=True)

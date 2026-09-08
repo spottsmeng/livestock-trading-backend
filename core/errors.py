@@ -153,3 +153,37 @@ class TicketInvalid(AppError):
         super().__init__(
             "TICKET_INVALID", "This connection ticket is invalid, expired, or already used.", status_code=401
         )
+
+
+class AbattoirOwnedTable(AppError):
+    """§9.8: `POST /reference-data/versions` MUST reject any attempt to
+    write an abattoir-owned table (§6.1-6.3, §6.6)."""
+
+    def __init__(self, table_key: str) -> None:
+        super().__init__(
+            "ABATTOIR_OWNED_TABLE",
+            f"'{table_key}' is maintained by the abattoir and received with each submission — it cannot be "
+            "edited here.",
+            status_code=403,
+        )
+
+
+class ImpactPreviewRequired(AppError):
+    """§6.5, §9.8, §19: activation is refused unless the impact preview was
+    fetched for this exact version first."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "IMPACT_PREVIEW_REQUIRED",
+            "Fetch the impact preview for this version before activating it.",
+            status_code=409,
+        )
+
+
+class RegistryCodeExists(AppError):
+    def __init__(self, code: str) -> None:
+        super().__init__(
+            "REGISTRY_CODE_EXISTS",
+            f"'{code}' is already registered.",
+            status_code=409,
+        )

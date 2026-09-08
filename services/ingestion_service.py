@@ -11,7 +11,7 @@ import base64
 import hashlib
 import json
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from redis.asyncio import Redis
@@ -20,18 +20,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.errors import PreviewExpired
 from core.object_storage import ObjectStorage
-from core.reference_data import get_abattoir_fixed_costs, get_everhealth_config
+from core.reference_data import get_abattoir_fixed_costs, get_active_everhealth_config
 from domain.engine.crosscheck import AbattoirReferenceTables
 from domain.engine.workings import Lifecycle
 from domain.ingestion import diff as diff_module
+from domain.ingestion.abattoir_drift import compare_abattoir_tables
 from domain.ingestion.layout import DetectedLayout, SectionLocation
 from domain.ingestion.types import BenchmarkMethod, ValueSource
 from domain.ingestion.workbook import ParsedOrderLine, ParsedSnapshot, parse
 from models.enums import Incoterm, SnapshotStatus
 from models.order_line import OrderLine
 from models.order_snapshot import OrderSnapshot
+from models.reference_data import ReferenceDataDrift
 from repositories import order_lines as order_lines_repo
 from repositories import order_snapshots as order_snapshots_repo
+from repositories import reference_data_drift as reference_data_drift_repo
 from services import audit_service
 
 _PREVIEW_KEY_PREFIX = "snapshot-preview:"
@@ -300,7 +303,7 @@ async def diff_snapshots(db: AsyncSession, snapshot_a_id: uuid.UUID, snapshot_b_
 async def create_upload_preview(
     db: AsyncSession, redis: Redis, *, org_id: uuid.UUID, file_bytes: bytes, filename: str
 ) -> dict:
-    config = get_everhealth_config()
+    config = await get_active_everhealth_config(db)
     fixed_active, fixed_loaded = get_abattoir_fixed_costs()
     parsed = parse(
         file_bytes,
@@ -358,6 +361,16 @@ async def commit_snapshot(
     file_bytes = base64.b64decode(cache_payload["file_bytes_b64"])
     parsed = _deserialize_parsed_snapshot(cache_payload["parsed"])
 
+    # §7.2 point 11 — fetched before the new snapshot is created, so this is
+    # genuinely "the previous submission's tables", never the one about to
+    # be written.
+    previous_snapshot = await order_snapshots_repo.get_latest_for_org(db, org_id)
+    previous_tables = (
+        deserialize_abattoir_tables(previous_snapshot.abattoir_reference_tables)
+        if previous_snapshot is not None
+        else None
+    )
+
     source_sha256 = hashlib.sha256(file_bytes).hexdigest()
     snapshot_id = uuid.uuid4()
     storage_key = f"snapshots/{snapshot_id}/{cache_payload['filename']}"
@@ -377,6 +390,24 @@ async def commit_snapshot(
     )
     await order_snapshots_repo.create(db, snapshot)
     await order_lines_repo.create_many(db, [_order_line_model(snapshot_id, line) for line in parsed.lines])
+
+    drift_rows = compare_abattoir_tables(previous_tables, parsed.abattoir_tables)
+    if drift_rows:
+        now = datetime.now(UTC)
+        await reference_data_drift_repo.create_many(
+            db,
+            [
+                ReferenceDataDrift(
+                    snapshot_id=snapshot_id,
+                    table_key=row.table_key,
+                    key1=row.key1,
+                    old_value=row.old_value,
+                    new_value=row.new_value,
+                    detected_at=now,
+                )
+                for row in drift_rows
+            ],
+        )
 
     await audit_service.write(
         db,

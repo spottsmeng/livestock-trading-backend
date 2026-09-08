@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.reference_data import get_everhealth_config
+from core.reference_data import get_active_everhealth_config
 from domain.engine import crosscheck
 from domain.engine import issues as codes
 from domain.engine.crosscheck import AbattoirReferenceTables
@@ -188,7 +188,7 @@ async def _check_dnbp_outlier(
 
 
 async def calculate_snapshot(db: AsyncSession, snapshot: OrderSnapshot, *, actor_id: uuid.UUID) -> dict:
-    config = get_everhealth_config()
+    config = await get_active_everhealth_config(db)
     abattoir_tables = deserialize_abattoir_tables(snapshot.abattoir_reference_tables)
 
     lines = await order_lines_repo.list_by_snapshot(db, snapshot.id)

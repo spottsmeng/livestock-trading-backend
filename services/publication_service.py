@@ -22,7 +22,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.errors import IssuesNotAcknowledged, NothingToPublish, PublicationBlocked
-from core.reference_data import get_everhealth_config, get_operational_constants
+from core.reference_data import get_active_everhealth_config, get_operational_constants
 from domain.engine.issues import Severity
 from models.dnbp_publication import DnbpPublication, DnbpPublicationLine
 from models.enums import SnapshotStatus
@@ -63,7 +63,7 @@ class PublicationLineDraft:
 
 
 async def compute_publication_lines(db: AsyncSession, snapshot_id: uuid.UUID) -> list[PublicationLineDraft]:
-    config = get_everhealth_config()
+    config = await get_active_everhealth_config(db)
     tolerance_pct = get_operational_constants().buyer_weight_band_tolerance_pct
 
     by_species: dict[str, list] = {}
