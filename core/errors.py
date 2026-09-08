@@ -99,3 +99,21 @@ class BreachedPassword(AppError):
             "This password has appeared in a known data breach. Choose a different one.",
             status_code=422,
         )
+
+
+class PreviewExpired(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "PREVIEW_EXPIRED",
+            "This upload preview has expired or was not found. Please re-upload the file.",
+            status_code=410,
+        )
+
+
+class SnapshotNotCalculated(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "SNAPSHOT_NOT_CALCULATED",
+            "This snapshot has not been calculated yet.",
+            status_code=409,
+        )

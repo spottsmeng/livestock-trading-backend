@@ -32,5 +32,43 @@ class Settings(BaseSettings):
 
     disable_breached_password_check: bool = False
 
+    # §14 requires TOTP for OWNER/ACCOUNTANT at login — defaults True (the
+    # spec-correct, secure choice) so an environment that forgets to set
+    # anything still enforces it; this is the one setting where the failure
+    # mode of "forgot to configure it" must land on the safe side. Local
+    # dev/test/demo's .env sets this False to skip entering a code on every
+    # login while the product is still being built out — flip it back to
+    # true (or just remove the line) before a real deployment. Enrollment
+    # (the QR-code step in accept-invite) is untouched by this flag either
+    # way — only the login-time check is gated, so re-enabling this later
+    # needs no re-enrollment.
+    mfa_enforcement_enabled: bool = True
+
+    # Phase 2 — original-file retention (§7.2 pt 9, §8). "local" is the
+    # documented local-dev/CI stand-in (backend/.docker-data/objects/,
+    # already gitignored); "s3" is the real answer for the Railway
+    # deployment, which has no native blob storage — point it at any
+    # S3-compatible bucket (Cloudflare R2, Backblaze B2, self-hosted MinIO,
+    # or AWS S3 itself) via boto3, which is Apache-2.0/FOSS regardless of
+    # which of those the bucket actually is.
+    object_storage_backend: str = "local"
+    object_storage_local_dir: str = ".docker-data/objects"
+    object_storage_bucket: str = "livestock-order-snapshots"
+    object_storage_endpoint_url: str | None = None
+    object_storage_region: str = "auto"
+    object_storage_access_key_id: str = ""
+    object_storage_secret_access_key: str = ""
+
+    # Phase 2 — where EverhealthConfig loads its seed values from (§6).
+    # Defaults to fixtures/reference-data-seed.json one level up from
+    # backend/ — the two are separate git repos (see docs), sharing this
+    # parent folder on disk only, so the path is deliberately not baked
+    # into domain/engine/config.py itself.
+    reference_data_seed_path: str | None = None
+
+    # Ephemeral parse-preview cache TTL (§7.3's upload -> preview -> commit
+    # flow) — long enough for Bing to review a preview before confirming.
+    upload_preview_ttl_seconds: int = 1800
+
 
 settings = Settings()

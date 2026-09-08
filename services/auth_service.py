@@ -53,7 +53,7 @@ async def authenticate(db: AsyncSession, *, email: str, password: str, totp_code
     role_row = await user_repo.get_role(db, user.id)
     role = role_row.role  # type: ignore[union-attr]
 
-    if role in (Role.OWNER, Role.ACCOUNTANT):
+    if settings.mfa_enforcement_enabled and role in (Role.OWNER, Role.ACCOUNTANT):
         if not user.mfa_enrolled:
             # Enrollment happens right after accept-invite; a user who
             # skipped it can't log in until it's done (§14).

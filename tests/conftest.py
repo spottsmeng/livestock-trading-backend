@@ -17,7 +17,33 @@ from models.user_role import UserRole
 DEV_PASSWORD = "TestPassword123!"  # noqa: S105 — fixture-only, never a real credential
 
 # Truncate order matters: children before parents (FK constraints).
-_TABLES_IN_DELETE_ORDER = ["audit_log", "refresh_tokens", "user_roles", "users", "organisations"]
+_TABLES_IN_DELETE_ORDER = [
+    "validation_issues",
+    "correction_requests",
+    "order_workings",
+    "order_lines",
+    "order_snapshots",
+    "audit_log",
+    "refresh_tokens",
+    "user_roles",
+    "users",
+    "organisations",
+]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _force_mfa_enforcement():
+    """§14's MFA gate (core/config.py's mfa_enforcement_enabled) defaults
+    on but a developer's local .env may turn it off for their own
+    convenience during this dev/test/demo phase. The test suite must never
+    inherit that: tests like test_auth_flow.py's
+    test_owner_login_without_totp_is_rejected exist specifically to prove
+    the gate works, so they always run against it forced on, regardless of
+    whatever's currently convenient to develop against."""
+    original = settings.mfa_enforcement_enabled
+    settings.mfa_enforcement_enabled = True
+    yield
+    settings.mfa_enforcement_enabled = original
 
 
 def _test_database_url() -> str:

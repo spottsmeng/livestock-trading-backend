@@ -22,3 +22,24 @@ class InviteStatus(enum.StrEnum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"
     DEACTIVATED = "DEACTIVATED"
+
+
+class Incoterm(enum.StrEnum):
+    """§5.1 column J — genuinely closed, standard trade terms. Not an open
+    registry per §6.9 — see this module's top comment for that distinction."""
+
+    CIF = "CIF"
+    FAS = "FAS"
+
+
+class SnapshotStatus(enum.StrEnum):
+    PARSED = "PARSED"
+    CALCULATED = "CALCULATED"
+    PUBLISHED = "PUBLISHED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+class CorrectionStatus(enum.StrEnum):
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
+    WITHDRAWN = "WITHDRAWN"
