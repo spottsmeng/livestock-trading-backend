@@ -31,6 +31,18 @@ async def get_by_order_line_id(db: AsyncSession, order_line_id: uuid.UUID) -> Or
     return result.scalar_one_or_none()
 
 
+async def list_by_snapshot_id(db: AsyncSession, snapshot_id: uuid.UUID) -> list[OrderWorkings]:
+    """Batches what would otherwise be one GET /order-lines/{id}/workings
+    call per active line (the workbench grid and benchmark-compare view
+    both need every ACTIVE line's workings up front) into a single query."""
+    result = await db.execute(
+        select(OrderWorkings)
+        .join(OrderLine, OrderWorkings.order_line_id == OrderLine.id)
+        .where(OrderLine.snapshot_id == snapshot_id, OrderLine.lifecycle == Lifecycle.ACTIVE)
+    )
+    return list(result.scalars().all())
+
+
 async def list_active_with_bing_dnbp(db: AsyncSession, snapshot_id: uuid.UUID) -> list[tuple[OrderLine, OrderWorkings]]:
     """services/publication_service.py's `compute_publication_lines` input:
     every ACTIVE line in a snapshot that has a computed, non-null `AC`

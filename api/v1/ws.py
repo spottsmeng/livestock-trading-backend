@@ -45,21 +45,23 @@ async def _relay(websocket: WebSocket, redis: Redis, channel: str) -> None:
     async def _watch_for_close() -> None:
         # The buyer/console client never needs to send anything over this
         # socket (delivery acks are a REST call, §10) — this loop exists
-        # only to notice a client-initiated close promptly.
-        while True:
-            await websocket.receive_text()
+        # only to notice a client-initiated close promptly. A disconnect
+        # without a close frame (tab close, refresh, HMR reload) raises
+        # WebSocketDisconnect here — that's this task's normal exit, not
+        # an error.
+        with contextlib.suppress(WebSocketDisconnect):
+            while True:
+                await websocket.receive_text()
 
     forward_task = asyncio.create_task(_forward())
     watch_task = asyncio.create_task(_watch_for_close())
     try:
         await asyncio.wait({forward_task, watch_task}, return_when=asyncio.FIRST_COMPLETED)
-    except WebSocketDisconnect:
-        pass
     finally:
         forward_task.cancel()
         watch_task.cancel()
         for task in (forward_task, watch_task):
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect):
                 await task
         await pubsub.unsubscribe(channel)
         await pubsub.aclose()

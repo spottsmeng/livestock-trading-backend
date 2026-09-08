@@ -15,8 +15,9 @@ from domain.engine.workings import Lifecycle
 from models.enums import Role, SnapshotStatus
 from repositories import order_lines as order_lines_repo
 from repositories import order_snapshots as order_snapshots_repo
+from repositories import order_workings as order_workings_repo
 from repositories import validation_issues as validation_issues_repo
-from schemas.order_lines import OrderLineResponse
+from schemas.order_lines import OrderLineResponse, OrderWorkingsResponse
 from schemas.snapshots import (
     CalculateResponse,
     CommitSnapshotRequest,
@@ -144,6 +145,17 @@ async def list_lines(
     await _get_owned_snapshot(db, snapshot_id, current.org_id)
     lines = await order_lines_repo.list_by_snapshot(db, snapshot_id, lifecycle=lifecycle, species=species)
     return [_to_line_response(line) for line in lines]
+
+
+@router.get("/{snapshot_id}/workings", response_model=list[OrderWorkingsResponse])
+async def list_workings(
+    snapshot_id: uuid.UUID,
+    current: CurrentUser = Depends(_trading_console),
+    db: AsyncSession = Depends(get_db),
+) -> list[OrderWorkingsResponse]:
+    await _get_owned_snapshot(db, snapshot_id, current.org_id)
+    workings = await order_workings_repo.list_by_snapshot_id(db, snapshot_id)
+    return [OrderWorkingsResponse.model_validate(w) for w in workings]
 
 
 @router.post("/{snapshot_id}/calculate", response_model=CalculateResponse)
