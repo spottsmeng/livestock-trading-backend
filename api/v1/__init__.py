@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from api.v1 import (
     auth,
+    buy_instructions,
     buyer,
     correction_requests,
     health,
@@ -22,5 +23,6 @@ api_router.include_router(order_lines.router)
 api_router.include_router(correction_requests.router)
 api_router.include_router(publications.router)
 api_router.include_router(reference_data.router)
+api_router.include_router(buy_instructions.router)
 api_router.include_router(buyer.router)
 api_router.include_router(ws.router)

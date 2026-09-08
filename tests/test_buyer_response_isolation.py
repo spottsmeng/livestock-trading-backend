@@ -15,7 +15,12 @@ from pydantic import BaseModel
 from api.v1 import buyer
 
 FORBIDDEN_FIELD_PATTERN = re.compile(
-    r"^(customer_name|avg_price_aud|nrv_per_kg|amount_aud|mom_ph|dnbp_benchmark|profit_on_.*|diff_vs_.*)$"
+    r"^(customer_name|avg_price_aud|nrv_per_kg|amount_aud|mom_ph|dnbp_benchmark|profit_on_.*|diff_vs_.*"
+    # Phase 4, §13.1/§2.2 — the Buy Instruction's cost/margin-adjacent
+    # figures, same forbidden category as mom_ph/profit_on_*: a buyer may
+    # see the DNBP ceiling and the target heads/weight it applies to, never
+    # what Bing expects to pay for it or what she thinks it should cost.
+    r"|peters_expectation|expected_livestock_cost)$"
 )
 
 

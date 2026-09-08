@@ -26,6 +26,14 @@ async def accountant_headers(client: AsyncClient, db: AsyncSession, org: Organis
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
+async def owner_headers(client: AsyncClient, db: AsyncSession, org: Organisation, *, email: str) -> dict:
+    _user, secret = await make_active_user(db, org=org, email=email, role=Role.OWNER, with_mfa=True)
+    code = pyotp.TOTP(secret).now()
+    resp = await client.post("/api/v1/auth/login", json={"email": email, "password": DEV_PASSWORD, "totp_code": code})
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
 async def buyer_headers(client: AsyncClient, db: AsyncSession, org: Organisation, *, email: str) -> dict:
     await make_active_user(db, org=org, email=email, role=Role.BUYER)
     resp = await client.post("/api/v1/auth/login", json={"email": email, "password": DEV_PASSWORD})

@@ -104,6 +104,31 @@ class BuyEntryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class InstructionLineResponse(BaseModel):
+    """§12.5, §2.2 — deliberately excludes `peters_expectation` and
+    `expected_livestock_cost` (cost/margin-adjacent, same forbidden category
+    as `mom_ph`/`profit_on_*`), and every fill/reconciliation field — none
+    of those exist on this model at all, so a future field addition to
+    `BuyInstructionLine` cannot silently leak here (same buyer-safe-by-
+    construction discipline as every other model in this module)."""
+
+    contract_no: str | None
+    species: str
+    target_heads: str
+    weight_requirement_kg: str
+    dnbp_per_kg: str
+
+
+class InstructionResponse(BaseModel):
+    instruction_id: str
+    instruction_no: str
+    trade_date: str
+    status: str
+    saleyard: str | None
+    prepayment_note: str | None
+    lines: list[InstructionLineResponse]
+
+
 class BulkSyncItemResult(BaseModel):
     client_uuid: str
     ok: bool

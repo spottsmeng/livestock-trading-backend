@@ -1,5 +1,6 @@
 from models.audit_log import AuditLog
 from models.buy_entry import BuyEntry
+from models.buy_instruction import BuyInstruction, BuyInstructionLine, BuyInstructionLineFill
 from models.correction_request import CorrectionRequest
 from models.dnbp_publication import DnbpPublication, DnbpPublicationDelivery, DnbpPublicationLine
 from models.order_line import OrderLine
@@ -22,6 +23,9 @@ from models.validation_issue import ValidationIssueRecord
 __all__ = [
     "AuditLog",
     "BuyEntry",
+    "BuyInstruction",
+    "BuyInstructionLine",
+    "BuyInstructionLineFill",
     "CorrectionRequest",
     "DnbpPublication",
     "DnbpPublicationDelivery",

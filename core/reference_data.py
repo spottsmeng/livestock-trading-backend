@@ -17,6 +17,12 @@ instruction hours) tune supporting UX, not `AC` — so neither needs the
 versioning/impact-preview/audit machinery this phase adds. `EverhealthConfig`
 itself (domain/engine/config.py) and its `from_seed_json` loader are
 untouched; `from_values` is what the DB-backed path uses now.
+
+`get_saleyard_calendar` (Phase 4) is new — §6.8's saleyard/day/prepayment
+schedule was already sitting in the seed JSON (`everhealth.saleyard_calendar`)
+but nothing read it until the Buy Instruction's prepayment block needed it.
+Same seed-file-backed pattern as `get_operational_constants`: not a
+source-of-truth input, no versioning/impact-preview needed.
 """
 
 import json
@@ -105,6 +111,45 @@ class OperationalConstants:
     bid_check_close_threshold_pct: Decimal
     buyer_weight_band_tolerance_pct: Decimal
     stale_instruction_hours: int
+
+
+@dataclass(frozen=True, slots=True)
+class SaleyardCalendarEntry:
+    saleyard: str
+    day: str  # MONDAY|TUESDAY|THURSDAY|FRIDAY, as stored in the seed
+    prepayment_aud: Decimal
+    note: str | None
+
+
+@lru_cache
+def get_saleyard_calendar() -> tuple[SaleyardCalendarEntry, ...]:
+    """§6.8, §13.1's prepayment block. Order is preserved exactly as seeded
+    (Bendigo/Ballarat/Wagga/Griffith) so the Buy Instruction export always
+    lists the full schedule in the same order as the real v3 sample,
+    regardless of which saleyards actually traded that week."""
+    data = json.loads(_seed_path().read_text())
+    rows = data["everhealth"]["saleyard_calendar"]["values"]
+    return tuple(
+        SaleyardCalendarEntry(
+            saleyard=row["saleyard"],
+            day=row["day"],
+            prepayment_aud=Decimal(str(row["prepayment_aud"])),
+            note=row.get("note"),
+        )
+        for row in rows
+    )
+
+
+def resolve_saleyard_for_date(trade_date, calendar: tuple[SaleyardCalendarEntry, ...]) -> SaleyardCalendarEntry | None:
+    """§6.8's day-of-week -> saleyard mapping, used by the buyer PWA's
+    default saleyard (§12.4) and the Instruction screen's prepayment note
+    (§12.5). Returns None on a day with no scheduled saleyard (e.g.
+    Wednesday) rather than guessing."""
+    day_name = trade_date.strftime("%A").upper()
+    for entry in calendar:
+        if entry.day == day_name:
+            return entry
+    return None
 
 
 @lru_cache

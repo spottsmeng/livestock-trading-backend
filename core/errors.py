@@ -187,3 +187,50 @@ class RegistryCodeExists(AppError):
             f"'{code}' is already registered.",
             status_code=409,
         )
+
+
+class PublicationSnapshotMismatch(AppError):
+    """§9.6: `POST /buy-instructions` must refuse if `publication_id` does
+    not actually belong to `snapshot_id` — see
+    services/buy_instruction_service.py's module docstring for why this
+    validation is what guarantees every generated line already has a valid
+    `bing_dnbp`."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "PUBLICATION_SNAPSHOT_MISMATCH",
+            "This publication was not generated from the given snapshot.",
+            status_code=409,
+        )
+
+
+class NothingToInstruct(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "NOTHING_TO_INSTRUCT",
+            "No active line in this snapshot has a computed DNBP to instruct.",
+            status_code=409,
+        )
+
+
+class InvalidInstructionTransition(AppError):
+    def __init__(self, message: str) -> None:
+        super().__init__("INVALID_INSTRUCTION_TRANSITION", message, status_code=409)
+
+
+class InstructionNotApproved(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "INSTRUCTION_NOT_APPROVED",
+            "This instruction must be approved (by an OWNER) before it can be issued.",
+            status_code=409,
+        )
+
+
+class FillsNotAllowed(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "FILLS_NOT_ALLOWED",
+            "Reconciliation fills can only be added or removed while the instruction is ISSUED or ACKNOWLEDGED.",
+            status_code=409,
+        )

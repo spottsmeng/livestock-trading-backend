@@ -73,6 +73,21 @@ class ReferenceDataTableKey(enum.StrEnum):
     STANDARD_WEIGHT = "STANDARD_WEIGHT"
 
 
+class BuyInstructionStatus(enum.StrEnum):
+    """§8, §9.6, Phase 4. `approve` (OWNER only) does NOT move status — it
+    only stamps `approved_by`/`approved_at` while still DRAFT. `issue`
+    requires `approved_by` already set and moves DRAFT->ISSUED. The buyer's
+    acknowledgement moves ISSUED->ACKNOWLEDGED. RECONCILED is a manual close
+    (OWNER or ACCOUNTANT) once reconciliation looks settled — not in §9.6's
+    literal route list, same documented-deviation pattern as
+    dnbp_publication_deliveries in Phase 3."""
+
+    DRAFT = "DRAFT"
+    ISSUED = "ISSUED"
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+    RECONCILED = "RECONCILED"
+
+
 class BuyEntrySyncStatus(enum.StrEnum):
     """§8/§12.7. A row only ever exists here once POST /buyer/entries has
     succeeded, so server-side existence already implies SYNCED — the

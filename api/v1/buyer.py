@@ -14,10 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import CurrentUser, redis_dep, require_role
 from core.db import get_db
 from core.errors import NotFound
-from core.reference_data import get_operational_constants
+from core.reference_data import get_operational_constants, get_saleyard_calendar, resolve_saleyard_for_date
 from domain.buyer.bidcheck import score_bid
 from models.enums import Role
 from repositories import buy_entries as buy_entries_repo
+from repositories import buy_instructions as buy_instructions_repo
 from repositories import publications as publications_repo
 from repositories import push_subscriptions as push_subscriptions_repo
 from schemas.buyer import (
@@ -28,9 +29,11 @@ from schemas.buyer import (
     BuyEntryPatchRequest,
     BuyEntryResponse,
     DnbpCurrentResponse,
+    InstructionLineResponse,
+    InstructionResponse,
     PushSubscriptionRequest,
 )
-from services import buy_entry_service, delivery_service
+from services import buy_entry_service, buy_instruction_service, delivery_service
 from services.buy_entry_service import BuyEntryInput
 
 router = APIRouter(prefix="/buyer", tags=["buyer"])
@@ -201,6 +204,52 @@ async def delete_entry(
     if entry is None or entry.buyer_id != current.user_id:
         raise NotFound("Buy entry")
     entry.is_deleted = True
+    await db.commit()
+
+
+@router.get("/instruction/current", response_model=InstructionResponse)
+async def instruction_current(
+    current: CurrentUser = Depends(_buyer_only), db: AsyncSession = Depends(get_db)
+) -> InstructionResponse:
+    """§12.5, §9.5 — buyer-safe view of the live Buy Instruction. Built by
+    hand from `BuyInstructionLine`/`SaleyardCalendarEntry` field-by-field
+    (never `model_validate`d off the trading-console model), the same
+    discipline every other route in this module already follows, so a
+    forbidden field can never leak just because a future column gets added
+    upstream."""
+    instruction = await buy_instructions_repo.get_current_for_org(db, current.org_id)
+    if instruction is None:
+        raise NotFound("Buy instruction")
+    lines = await buy_instructions_repo.list_lines(db, instruction.id)
+    saleyard_entry = resolve_saleyard_for_date(instruction.trade_date, get_saleyard_calendar())
+    return InstructionResponse(
+        instruction_id=str(instruction.id),
+        instruction_no=instruction.instruction_no,
+        trade_date=instruction.trade_date.isoformat(),
+        status=instruction.status.value,
+        saleyard=saleyard_entry.saleyard if saleyard_entry else None,
+        prepayment_note=saleyard_entry.note if saleyard_entry else None,
+        lines=[
+            InstructionLineResponse(
+                contract_no=line.contract_no,
+                species=line.species,
+                target_heads=str(line.expected_heads),
+                weight_requirement_kg=str(line.weight_requirement_kg),
+                dnbp_per_kg=str(line.dnbp_per_kg),
+            )
+            for line in lines
+        ],
+    )
+
+
+@router.post("/instruction/{instruction_id}/acknowledge", status_code=204)
+async def instruction_acknowledge(
+    instruction_id: uuid.UUID, current: CurrentUser = Depends(_buyer_only), db: AsyncSession = Depends(get_db)
+) -> None:
+    instruction = await buy_instructions_repo.get_by_id(db, instruction_id)
+    if instruction is None or instruction.org_id != current.org_id:
+        raise NotFound("Buy instruction")
+    await buy_instruction_service.acknowledge(db, instruction, buyer_id=current.user_id)
     await db.commit()
 
 
