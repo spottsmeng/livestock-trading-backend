@@ -18,14 +18,14 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from core.errors import PreviewExpired
+from core.errors import LayoutDetectionFailed, PreviewExpired
 from core.object_storage import ObjectStorage
 from core.reference_data import get_abattoir_fixed_costs, get_active_everhealth_config
 from domain.engine.crosscheck import AbattoirReferenceTables
 from domain.engine.workings import Lifecycle
 from domain.ingestion import diff as diff_module
 from domain.ingestion.abattoir_drift import compare_abattoir_tables
-from domain.ingestion.layout import DetectedLayout, SectionLocation
+from domain.ingestion.layout import DetectedLayout, LayoutDetectionError, SectionLocation
 from domain.ingestion.types import BenchmarkMethod, ValueSource
 from domain.ingestion.workbook import ParsedOrderLine, ParsedSnapshot, parse
 from models.enums import Incoterm, SnapshotStatus
@@ -310,13 +310,16 @@ async def create_upload_preview(
 
     config = await get_active_everhealth_config(db)
     fixed_active, fixed_loaded = get_abattoir_fixed_costs()
-    parsed = parse(
-        file_bytes,
-        filename=filename,
-        cif_buffer_per_kg=config.cif_buffer_per_kg,
-        fixed_cost_per_head_active=fixed_active,
-        fixed_cost_per_head_loaded=fixed_loaded,
-    )
+    try:
+        parsed = parse(
+            file_bytes,
+            filename=filename,
+            cif_buffer_per_kg=config.cif_buffer_per_kg,
+            fixed_cost_per_head_active=fixed_active,
+            fixed_cost_per_head_loaded=fixed_loaded,
+        )
+    except LayoutDetectionError as exc:
+        raise LayoutDetectionFailed(str(exc)) from exc
 
     previous_lines: list[ParsedOrderLine] | None = None
     if previous_snapshot is not None:

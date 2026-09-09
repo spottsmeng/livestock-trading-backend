@@ -234,3 +234,29 @@ class FillsNotAllowed(AppError):
             "Reconciliation fills can only be added or removed while the instruction is ISSUED or ACKNOWLEDGED.",
             status_code=409,
         )
+
+
+class NoActiveReferenceDataError(AppError):
+    """Raised if reference_data_versions has no active row — should never
+    happen past the Phase 3b migration, which seeds and activates one, but
+    the engine must never silently fall back to the seed file once the DB
+    is the source of truth: that would let a stale file value outlive an
+    admin's deliberate change. A genuine server-side misconfiguration, not
+    something the caller did wrong — hence 500, not 4xx."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "NO_ACTIVE_REFERENCE_DATA",
+            "No active reference data version exists yet — the DNBP model needs to be configured before this "
+            "can be used.",
+            status_code=500,
+        )
+
+
+class LayoutDetectionFailed(AppError):
+    """Wraps domain.ingestion.layout.LayoutDetectionError at the service
+    boundary — the domain layer stays framework-agnostic (never imports
+    core/errors itself), so translation happens here, not there."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("LAYOUT_DETECTION_FAILED", message, status_code=422)

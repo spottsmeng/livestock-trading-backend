@@ -34,6 +34,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.errors import NoActiveReferenceDataError
 from domain.engine.config import EverhealthConfig
 from models.enums import ReferenceDataTableKey
 from repositories import reference_data as reference_data_repo
@@ -46,14 +47,6 @@ def _seed_path() -> Path:
     if settings.reference_data_seed_path:
         return Path(settings.reference_data_seed_path)
     return _DEFAULT_SEED_PATH
-
-
-class NoActiveReferenceDataError(Exception):
-    """Raised if reference_data_versions has no active row — should never
-    happen past the Phase 3b migration, which seeds and activates one, but
-    the engine must never silently fall back to the seed file once the DB
-    is the source of truth: that would let a stale file value outlive an
-    admin's deliberate change."""
 
 
 async def get_active_everhealth_config(db: AsyncSession) -> EverhealthConfig:
