@@ -8,6 +8,31 @@ from models.order_line import OrderLine
 from models.order_workings import OrderWorkings
 
 
+# §8's order_workings column list — the fields calculate_snapshot actually
+# computes. Deliberately an allowlist, not "every column except id/
+# order_line_id/created_at": computed_at and updated_at are server-managed
+# (server_default / onupdate) and must never be copied from a transient,
+# never-flushed OrderWorkings — doing so overwrites them with None and
+# trips the NOT NULL constraint on UPDATE.
+COMPUTED_COLUMNS = (
+    "engine_version",
+    "ref_data_version",
+    "computed_at",
+    "adjusted_price_per_kg",
+    "pack_cost_per_kg",
+    "offal_return_per_kg",
+    "skin_return_per_kg",
+    "profit_on_peter_costs",
+    "bing_dnbp",
+    "bing_dnbp_factor_used",
+    "bing_dnbp_inputs",
+    "profit_on_bing_dnbp",
+    "diff_vs_benchmark",
+    "diff_vs_peter",
+    "supporting_analysis_complete",
+)
+
+
 async def upsert(db: AsyncSession, workings: OrderWorkings) -> OrderWorkings:
     """order_workings is derived, freely INSERT/UPDATE (§8) — recalculation
     replaces any prior row for the same order_line rather than accumulating
@@ -18,9 +43,7 @@ async def upsert(db: AsyncSession, workings: OrderWorkings) -> OrderWorkings:
         await db.flush()
         return workings
 
-    for column in OrderWorkings.__table__.columns.keys():
-        if column in ("id", "order_line_id", "created_at"):
-            continue
+    for column in COMPUTED_COLUMNS:
         setattr(existing, column, getattr(workings, column))
     await db.flush()
     return existing

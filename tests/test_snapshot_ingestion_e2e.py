@@ -7,6 +7,7 @@ fixture.
 """
 
 import hashlib
+import uuid
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.enums import Role
 from models.organisation import Organisation
+from repositories import order_workings as order_workings_repo
 from tests.conftest import DEV_PASSWORD, make_active_user
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
@@ -131,3 +133,57 @@ async def test_uploading_the_same_file_again_is_flagged_but_still_allowed(
     )
     assert second_commit.status_code == 201, second_commit.text
     assert second_commit.json()["id"] != committed_snapshot_id
+
+
+async def test_recalculating_an_already_calculated_snapshot_stays_computable(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
+    """Regression: repositories/order_workings.py's upsert() used to copy
+    every column — including the server-managed computed_at/updated_at —
+    from the transient, never-flushed OrderWorkings built each calculate
+    onto the existing row. That's a no-op on a line's first calculate
+    (INSERT, server_default fills computed_at/updated_at in) but nulls both
+    out on any recalculate (UPDATE with an explicit NULL), tripping
+    computed_at's NOT NULL constraint. A read in between (dnbp-proof)
+    mirrors the exact request sequence that hit this in production."""
+    headers = await _accountant_headers(client, db, everhealth_org)
+    file_bytes = FILE_07_08.read_bytes()
+    xlsx_content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    upload_resp = await client.post(
+        "/api/v1/snapshots/upload",
+        files={"file": (FILE_07_08.name, file_bytes, xlsx_content_type)},
+        headers=headers,
+    )
+    assert upload_resp.status_code == 200, upload_resp.text
+    preview = upload_resp.json()
+
+    commit_resp = await client.post(
+        "/api/v1/snapshots", json={"preview_id": preview["preview_id"]}, headers=headers
+    )
+    assert commit_resp.status_code == 201, commit_resp.text
+    snapshot = commit_resp.json()
+
+    first_calc = await client.post(f"/api/v1/snapshots/{snapshot['id']}/calculate", headers=headers)
+    assert first_calc.status_code == 200, first_calc.text
+
+    lines_resp = await client.get(
+        f"/api/v1/snapshots/{snapshot['id']}/lines", params={"lifecycle": "ACTIVE"}, headers=headers
+    )
+    ced18650 = next(line for line in lines_resp.json() if line["contract_no"] == "CED18650")
+
+    first_workings = (await client.get(f"/api/v1/order-lines/{ced18650['id']}/workings", headers=headers)).json()
+    assert first_workings["computed_at"] is not None
+
+    proof_resp = await client.get(f"/api/v1/order-lines/{ced18650['id']}/dnbp-proof", headers=headers)
+    assert proof_resp.status_code == 200, proof_resp.text
+
+    second_calc = await client.post(f"/api/v1/snapshots/{snapshot['id']}/calculate", headers=headers)
+    assert second_calc.status_code == 200, second_calc.text  # used to 500: NotNullViolationError on computed_at
+
+    second_workings = (await client.get(f"/api/v1/order-lines/{ced18650['id']}/workings", headers=headers)).json()
+    assert second_workings["computed_at"] is not None
+    assert second_workings["computed_at"] != first_workings["computed_at"]  # recompute actually advanced it
+
+    workings_row = await order_workings_repo.get_by_order_line_id(db, uuid.UUID(ced18650["id"]))
+    assert workings_row.updated_at is not None
