@@ -37,6 +37,7 @@ _TABLES_IN_DELETE_ORDER = [
     "validation_issues",
     "correction_requests",
     "reference_data_drift",
+    "order_line_removals",
     "order_workings",
     "order_lines",
     "order_snapshots",

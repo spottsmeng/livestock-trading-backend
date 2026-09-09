@@ -30,8 +30,10 @@ from domain.ingestion.types import BenchmarkMethod, ValueSource
 from domain.ingestion.workbook import ParsedOrderLine, ParsedSnapshot, parse
 from models.enums import Incoterm, SnapshotStatus
 from models.order_line import OrderLine
+from models.order_line_removal import OrderLineRemoval
 from models.order_snapshot import OrderSnapshot
 from models.reference_data import ReferenceDataDrift
+from repositories import order_line_removals as order_line_removals_repo
 from repositories import order_lines as order_lines_repo
 from repositories import order_snapshots as order_snapshots_repo
 from repositories import reference_data_drift as reference_data_drift_repo
@@ -407,6 +409,33 @@ async def commit_snapshot(
     )
     await order_snapshots_repo.create(db, snapshot)
     await order_lines_repo.create_many(db, [_order_line_model(snapshot_id, line) for line in parsed.lines])
+
+    # §7.3's removed_lines, persisted rather than shown once in the preview
+    # and discarded — a contract that silently disappears (not moved to
+    # LOADED, just gone) otherwise leaves no record of why.
+    if previous_snapshot is not None:
+        previous_db_lines = await order_lines_repo.list_by_snapshot(db, previous_snapshot.id)
+        previous_db_lines_by_key = {parsed_line_from_db(line).identity_key(): line for line in previous_db_lines}
+        previous_lines = [parsed_line_from_db(line) for line in previous_db_lines]
+        removed_keys = diff_module.compare(previous_lines, parsed.lines).removed_lines
+        if removed_keys:
+            now = datetime.now(UTC)
+            await order_line_removals_repo.create_many(
+                db,
+                [
+                    OrderLineRemoval(
+                        snapshot_id=snapshot_id,
+                        contract_no=key[0],
+                        species=key[1],
+                        product_type=key[2],
+                        incoterm=key[3],
+                        customer_name=previous_db_lines_by_key[key].customer_name,
+                        amount_aud=previous_db_lines_by_key[key].amount_aud,
+                        detected_at=now,
+                    )
+                    for key in removed_keys
+                ],
+            )
 
     drift_rows = compare_abattoir_tables(previous_tables, parsed.abattoir_tables)
     if drift_rows:
