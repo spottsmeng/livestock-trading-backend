@@ -35,6 +35,7 @@ from models.reference_data import ReferenceDataDrift
 from repositories import order_lines as order_lines_repo
 from repositories import order_snapshots as order_snapshots_repo
 from repositories import reference_data_drift as reference_data_drift_repo
+from repositories import users as users_repo
 from services import audit_service
 
 _PREVIEW_KEY_PREFIX = "snapshot-preview:"
@@ -303,6 +304,8 @@ async def diff_snapshots(db: AsyncSession, snapshot_a_id: uuid.UUID, snapshot_b_
 async def create_upload_preview(
     db: AsyncSession, redis: Redis, *, org_id: uuid.UUID, file_bytes: bytes, filename: str
 ) -> dict:
+    previous_snapshot = await order_snapshots_repo.get_latest_for_org(db, org_id)
+
     config = await get_active_everhealth_config(db)
     fixed_active, fixed_loaded = get_abattoir_fixed_costs()
     parsed = parse(
@@ -313,12 +316,25 @@ async def create_upload_preview(
         fixed_cost_per_head_loaded=fixed_loaded,
     )
 
-    previous_snapshot = await order_snapshots_repo.get_latest_for_org(db, org_id)
     previous_lines: list[ParsedOrderLine] | None = None
     if previous_snapshot is not None:
         db_lines = await order_lines_repo.list_by_snapshot(db, previous_snapshot.id)
         previous_lines = [parsed_line_from_db(line) for line in db_lines]
     snapshot_diff = diff_module.compare(previous_lines, parsed.lines)
+
+    # Never blocks the upload (§7.3: identical resubmission is a valid,
+    # expected case, e.g. a quiet day) — just tells the human this looks
+    # like something already sitting in the current snapshot, since §11.2
+    # lets both Owner and Accountant upload and either could've beaten the
+    # other to it.
+    duplicate_of_current = None
+    if previous_snapshot is not None and hashlib.sha256(file_bytes).hexdigest() == previous_snapshot.source_sha256:
+        uploader = await users_repo.get_by_id(db, previous_snapshot.uploaded_by)
+        duplicate_of_current = {
+            "snapshot_id": previous_snapshot.id,
+            "uploaded_by_email": uploader.email if uploader is not None else "unknown",
+            "uploaded_at": previous_snapshot.created_at,
+        }
 
     preview_id = str(uuid.uuid4())
     cache_payload = {
@@ -339,6 +355,7 @@ async def create_upload_preview(
         "active_count": len(parsed.active_lines),
         "loaded_count": len(parsed.loaded_lines),
         "diff": diff_to_jsonable(snapshot_diff),
+        "duplicate_of_current": duplicate_of_current,
     }
 
 

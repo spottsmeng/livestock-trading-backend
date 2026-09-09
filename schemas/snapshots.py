@@ -11,12 +11,25 @@ class CommitSnapshotRequest(BaseModel):
     preview_id: str
 
 
+class DuplicateOfCurrent(BaseModel):
+    """Populated when the uploaded file's content is byte-identical to the
+    org's current snapshot — surfaced so a human can decide whether this is
+    a deliberate resubmission or someone else already uploaded it (§11.2:
+    both Owner and Accountant can upload, so this is a real scenario, not
+    just a double-click)."""
+
+    snapshot_id: uuid.UUID
+    uploaded_by_email: str
+    uploaded_at: datetime
+
+
 class UploadPreviewResponse(BaseModel):
     preview_id: str
     detected_layout: dict[str, Any]
     active_count: int
     loaded_count: int
     diff: dict[str, Any]
+    duplicate_of_current: DuplicateOfCurrent | None = None
 
 
 class SnapshotResponse(BaseModel):

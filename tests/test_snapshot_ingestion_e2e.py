@@ -87,3 +87,47 @@ async def test_full_ingestion_pipeline_against_real_workbook(client, db: AsyncSe
     codes = {issue["code"] for issue in issues_resp.json()}
     assert "HAND_SET_VALUE" in codes  # the GOAT skin-return 0.5 override, surfaced not corrected
     assert "NO_DNBP_FACTOR" not in codes  # active MUTTON never appears in this file (D1)
+
+
+async def test_uploading_the_same_file_again_is_flagged_but_still_allowed(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
+    headers = await _accountant_headers(client, db, everhealth_org)
+    file_bytes = FILE_07_08.read_bytes()
+    xlsx_content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    first_upload = await client.post(
+        "/api/v1/snapshots/upload",
+        files={"file": (FILE_07_08.name, file_bytes, xlsx_content_type)},
+        headers=headers,
+    )
+    assert first_upload.status_code == 200, first_upload.text
+    assert first_upload.json()["duplicate_of_current"] is None  # nothing to be a duplicate of yet
+    commit_resp = await client.post(
+        "/api/v1/snapshots", json={"preview_id": first_upload.json()["preview_id"]}, headers=headers
+    )
+    assert commit_resp.status_code == 201, commit_resp.text
+    committed_snapshot_id = commit_resp.json()["id"]
+
+    # A re-submit of the byte-identical workbook is a real, supported case
+    # (§7.3 — never blocked, PRD explicitly allows resubmission), but the
+    # human reviewing the preview should be told it looks like a duplicate
+    # of what's already current, since §11.2 lets either Owner or
+    # Accountant upload and one may not know the other already did.
+    second_upload = await client.post(
+        "/api/v1/snapshots/upload",
+        files={"file": (FILE_07_08.name, file_bytes, xlsx_content_type)},
+        headers=headers,
+    )
+    assert second_upload.status_code == 200, second_upload.text
+    duplicate_notice = second_upload.json()["duplicate_of_current"]
+    assert duplicate_notice is not None
+    assert duplicate_notice["snapshot_id"] == committed_snapshot_id
+    assert duplicate_notice["uploaded_by_email"] == "bing-e2e@test.com"
+
+    # Confirming anyway still succeeds and creates a genuinely new snapshot.
+    second_commit = await client.post(
+        "/api/v1/snapshots", json={"preview_id": second_upload.json()["preview_id"]}, headers=headers
+    )
+    assert second_commit.status_code == 201, second_commit.text
+    assert second_commit.json()["id"] != committed_snapshot_id
