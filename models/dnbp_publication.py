@@ -41,6 +41,16 @@ class DnbpPublication(TimestampedBase):
     # reserved for genuinely new information); the WS/poll refresh that
     # keeps the buyer's "updated X min ago" status honest always fires
     # regardless, so a quiet, unchanged day is still silently confirmed.
+    #
+    # Deviates from §9.4 ("creates publication, fans out realtime + push"),
+    # §10 ("Web Push ... fires even when the app is closed. This is the
+    # primary alerting channel" — no stated exception) and §1.1's G2 success
+    # measure ("including push notification") — all three describe Web Push
+    # firing unconditionally on every publish. This is a deliberate,
+    # business-approved departure (alert-fatigue reasoning: a same-price
+    # republish's push would train the buyer to ignore the real ones), not
+    # something §20 lists as an open decision — confirmed with Terence,
+    # not inferred. Not in §8's literal `dnbp_publications` column list either.
     buyer_notified: Mapped[bool] = mapped_column(Boolean, default=True)
 
     superseded_by: Mapped[uuid.UUID | None] = mapped_column(

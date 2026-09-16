@@ -34,6 +34,15 @@ class OrderIssueAcknowledgment(TimestampedBase):
     in place on each new manual acknowledgment (see
     services/issue_acknowledgment_service.record), so this always reflects
     only the latest human decision and the content it was made against.
+
+    Beyond §8's literal diagram — same documented-deviation pattern as
+    `dnbp_publication_deliveries` (Phase 3) and `buy_instruction_line_fills`
+    (Phase 4). §5.7/§19 require every WARN/CORRECTION "individually
+    acknowledged, with the acknowledger recorded" but are silent on whether
+    that must be re-collected per immutable `order_lines` row or can carry
+    forward by business identity — this table is the latter reading,
+    directly extending §7.3's own stated principle that the real question
+    is never "what's in this file" but "what changed since yesterday."
     """
 
     __tablename__ = "order_issue_acknowledgments"

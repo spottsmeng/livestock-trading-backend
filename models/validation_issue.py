@@ -34,4 +34,9 @@ class ValidationIssueRecord(TimestampedBase):
     # last accepted it) — never set by the manual acknowledge endpoint, so
     # the frontend can tell "carried forward" apart from "acknowledged just
     # now" without guessing from timestamps.
+    #
+    # Beyond §8's literal diagram (which lists only line_id, code, severity,
+    # message, acknowledged_by, acknowledged_at) — same documented-deviation
+    # pattern as dnbp_publication_deliveries/buy_instruction_line_fills. See
+    # models/order_issue_acknowledgment.py's docstring for the full reasoning.
     carried_forward: Mapped[bool] = mapped_column(Boolean, default=False)
