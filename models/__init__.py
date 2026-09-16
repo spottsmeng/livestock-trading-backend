@@ -3,6 +3,7 @@ from models.buy_entry import BuyEntry
 from models.buy_instruction import BuyInstruction, BuyInstructionLine, BuyInstructionLineFill
 from models.correction_request import CorrectionRequest
 from models.dnbp_publication import DnbpPublication, DnbpPublicationDelivery, DnbpPublicationLine
+from models.order_issue_acknowledgment import OrderIssueAcknowledgment
 from models.order_line import OrderLine
 from models.order_line_removal import OrderLineRemoval
 from models.order_snapshot import OrderSnapshot
@@ -31,6 +32,7 @@ __all__ = [
     "DnbpPublication",
     "DnbpPublicationDelivery",
     "DnbpPublicationLine",
+    "OrderIssueAcknowledgment",
     "OrderLine",
     "OrderLineRemoval",
     "OrderSnapshot",

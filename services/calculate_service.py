@@ -33,7 +33,7 @@ from repositories import order_lines as order_lines_repo
 from repositories import order_workings as order_workings_repo
 from repositories import publications as publications_repo
 from repositories import validation_issues as validation_issues_repo
-from services import audit_service
+from services import audit_service, issue_acknowledgment_service
 from services.ingestion_service import deserialize_abattoir_tables
 
 DNBP_OUTLIER_LOOKBACK_DAYS = 30  # §5.7 — "> 15% off recent average" is a trailing 30-day species mean
@@ -237,16 +237,30 @@ async def calculate_snapshot(db: AsyncSession, snapshot: OrderSnapshot, *, actor
             await order_workings_repo.upsert(db, model)
             active_computed += 1
 
-        issue_models = [
-            ValidationIssueRecord(
+        issue_models = []
+        for issue in all_issues:
+            model = ValidationIssueRecord(
                 order_line_id=order_line.id,
                 code=issue.code,
                 severity=issue.severity,
                 message=issue.message,
                 column_ref=issue.column_ref,
             )
-            for issue in all_issues
-        ]
+            # Carry an acknowledgment forward when this exact concern was
+            # already accepted, against this exact content, on some earlier
+            # snapshot (§7.3's identity match + a whole-line content
+            # fingerprint — see services/issue_acknowledgment_service.py).
+            # BLOCK issues are never acknowledgeable so never looked up.
+            if issue.severity in (Severity.WARN, Severity.CORRECTION):
+                prior_ack = await issue_acknowledgment_service.find_matching(
+                    db, order_line, org_id=snapshot.org_id, code=issue.code, column_ref=issue.column_ref
+                )
+                if prior_ack is not None:
+                    model.acknowledged_by = prior_ack.acknowledged_by
+                    model.acknowledged_at = prior_ack.acknowledged_at
+                    model.carried_forward = True
+                    await issue_acknowledgment_service.confirm_still_valid(db, prior_ack, snapshot_id=snapshot.id)
+            issue_models.append(model)
         await validation_issues_repo.replace_for_line(db, order_line.id, issue_models)
 
         for issue in all_issues:

@@ -63,5 +63,6 @@ class IssueResponse(BaseModel):
     column_ref: str | None
     acknowledged_by: uuid.UUID | None
     acknowledged_at: datetime | None
+    carried_forward: bool
 
     model_config = {"from_attributes": True}

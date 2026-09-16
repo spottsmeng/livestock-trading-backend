@@ -25,7 +25,7 @@ from schemas.snapshots import (
     SnapshotResponse,
     UploadPreviewResponse,
 )
-from services import audit_service, calculate_service, ingestion_service
+from services import audit_service, calculate_service, ingestion_service, issue_acknowledgment_service
 
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
@@ -205,6 +205,21 @@ async def acknowledge_issue(
 
     issue.acknowledged_by = current.user_id
     issue.acknowledged_at = datetime.now(UTC)
+
+    # Durable, identity-keyed record of this decision — carried forward onto
+    # tomorrow's snapshot for this same order by calculate_service, as long
+    # as the line's content hasn't changed (services/
+    # issue_acknowledgment_service.py). This row, not the one above, is what
+    # stops the daily re-acknowledge-the-same-order design flaw.
+    await issue_acknowledgment_service.record(
+        db,
+        order_line,
+        org_id=current.org_id,
+        code=issue.code,
+        column_ref=issue.column_ref,
+        acknowledged_by=current.user_id,
+        snapshot_id=snapshot_id,
+    )
 
     await audit_service.write(
         db,

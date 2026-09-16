@@ -6,6 +6,7 @@ product_type + incoterm) since the source data has no stable row id and
 `contract_no` alone is not unique (§5.1).
 """
 
+import hashlib
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -62,6 +63,24 @@ class SnapshotDiff:
             "moved_to_loaded_count": len(self.moved_to_loaded),
             "removed_count": len(self.removed_lines),
         }
+
+
+def line_content_fingerprint(line: object) -> str:
+    """Stable hash of the same `_COMPARED_FIELDS` this module already uses
+    to decide "did this line actually change" — reused to content-address
+    issue acknowledgments (services/issue_acknowledgment_service.py) so an
+    unchanged line's prior review survives the fresh OrderLine row every
+    commit creates for it, while any real change (even to a field
+    unrelated to a specific issue's column) forces a new one. Works on
+    either ParsedOrderLine or the OrderLine DB model — both expose these
+    same field names."""
+    parts = []
+    for name in _COMPARED_FIELDS:
+        value = getattr(line, name)
+        if hasattr(value, "value"):  # Incoterm (or any other enum) — normalise to its raw string
+            value = value.value
+        parts.append(f"{name}={value!r}")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
 def _values_differ(a: object, b: object) -> bool:

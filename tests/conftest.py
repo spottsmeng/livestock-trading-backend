@@ -35,6 +35,7 @@ _TABLES_IN_DELETE_ORDER = [
     "dnbp_publications",
     "push_subscriptions",
     "validation_issues",
+    "order_issue_acknowledgments",
     "correction_requests",
     "reference_data_drift",
     "order_line_removals",

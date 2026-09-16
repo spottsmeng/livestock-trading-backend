@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,3 +28,10 @@ class ValidationIssueRecord(TimestampedBase):
 
     acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), default=None)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+    # True only when calculate_service pre-stamped acknowledged_by/at from a
+    # matching OrderIssueAcknowledgment (fingerprint-unchanged since a human
+    # last accepted it) — never set by the manual acknowledge endpoint, so
+    # the frontend can tell "carried forward" apart from "acknowledged just
+    # now" without guessing from timestamps.
+    carried_forward: Mapped[bool] = mapped_column(Boolean, default=False)

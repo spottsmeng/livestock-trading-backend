@@ -187,3 +187,86 @@ async def test_recalculating_an_already_calculated_snapshot_stays_computable(
 
     workings_row = await order_workings_repo.get_by_order_line_id(db, uuid.UUID(ced18650["id"]))
     assert workings_row.updated_at is not None
+
+
+async def test_acknowledged_issue_carries_forward_to_an_unchanged_line_in_the_next_snapshot(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
+    """The design flaw this fixes: services/ingestion_service.py's
+    commit_snapshot creates a brand-new OrderLine row for every line in the
+    abattoir's cumulative file, every day — including ones that haven't
+    changed at all — so an acknowledged WARN/CORRECTION issue used to come
+    back unacknowledged the very next snapshot, forcing the business user to
+    re-acknowledge the exact same concern on the exact same, unchanged order
+    every single day it kept reappearing in the file. Re-submitting the
+    byte-identical workbook (guaranteeing every line's content is unchanged)
+    is the sharpest test of the fix: the GOAT line's HAND_SET_VALUE warning,
+    acknowledged once against the first snapshot, must come back already
+    acknowledged — and flagged as carried forward, not freshly acked — on
+    the second."""
+    headers = await _accountant_headers(client, db, everhealth_org)
+    file_bytes = FILE_07_08.read_bytes()
+    xlsx_content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    async def _upload_commit_calculate() -> dict:
+        upload_resp = await client.post(
+            "/api/v1/snapshots/upload",
+            files={"file": (FILE_07_08.name, file_bytes, xlsx_content_type)},
+            headers=headers,
+        )
+        assert upload_resp.status_code == 200, upload_resp.text
+        commit_resp = await client.post(
+            "/api/v1/snapshots", json={"preview_id": upload_resp.json()["preview_id"]}, headers=headers
+        )
+        assert commit_resp.status_code == 201, commit_resp.text
+        snapshot = commit_resp.json()
+        calc_resp = await client.post(f"/api/v1/snapshots/{snapshot['id']}/calculate", headers=headers)
+        assert calc_resp.status_code == 200, calc_resp.text
+        return snapshot
+
+    async def _goat_hand_set_issue(snapshot_id: str) -> dict:
+        lines_resp = await client.get(
+            f"/api/v1/snapshots/{snapshot_id}/lines", params={"lifecycle": "ACTIVE"}, headers=headers
+        )
+        goat_line = next(line for line in lines_resp.json() if line["species"] == "GOAT")
+        issues_resp = await client.get(f"/api/v1/snapshots/{snapshot_id}/issues", headers=headers)
+        return next(
+            issue
+            for issue in issues_resp.json()
+            if issue["order_line_id"] == goat_line["id"] and issue["code"] == "HAND_SET_VALUE"
+        )
+
+    first_snapshot = await _upload_commit_calculate()
+    first_issue = await _goat_hand_set_issue(first_snapshot["id"])
+    assert first_issue["acknowledged_at"] is None
+    assert first_issue["carried_forward"] is False
+
+    ack_resp = await client.post(
+        f"/api/v1/snapshots/{first_snapshot['id']}/issues/{first_issue['id']}/acknowledge", headers=headers
+    )
+    assert ack_resp.status_code == 200, ack_resp.text
+    acked = ack_resp.json()
+    assert acked["acknowledged_at"] is not None
+    assert acked["carried_forward"] is False  # a fresh, manual acknowledgment — not a carry-forward
+
+    # A second, byte-identical submission — the abattoir's cumulative file
+    # resubmitted unchanged (§7.3 explicitly allows and expects this).
+    second_snapshot = await _upload_commit_calculate()
+    assert second_snapshot["id"] != first_snapshot["id"]
+
+    second_issue = await _goat_hand_set_issue(second_snapshot["id"])
+    assert second_issue["id"] != first_issue["id"]  # a genuinely new row, on a genuinely new OrderLine
+    assert second_issue["acknowledged_at"] is not None  # ...but carrying the same human decision forward
+    assert second_issue["acknowledged_by"] == acked["acknowledged_by"]
+    assert second_issue["carried_forward"] is True
+
+    # And the publish gate agrees: this specific, previously-acknowledged
+    # concern never blocks the second snapshot — other genuinely
+    # unacknowledged issues on other lines in this fixture still correctly
+    # do, proving the carry-forward is scoped to this exact issue, not a
+    # blanket bypass of the gate.
+    publish_resp = await client.post(
+        "/api/v1/publications", json={"snapshot_id": second_snapshot["id"]}, headers=headers
+    )
+    assert publish_resp.status_code == 409, publish_resp.text
+    assert second_issue["id"] not in publish_resp.json()["error"]["details"]["unacknowledged_issue_ids"]
