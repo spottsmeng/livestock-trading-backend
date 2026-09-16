@@ -43,6 +43,7 @@ class PublicationResponse(BaseModel):
     notes: str | None
     superseded_by: uuid.UUID | None
     superseded_at: datetime | None
+    buyer_notified: bool
     lines: list[PublicationLineResponse]
 
     model_config = {"from_attributes": True}

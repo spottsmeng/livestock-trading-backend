@@ -78,3 +78,36 @@ async def test_get_current_publication_reflects_latest(client, db: AsyncSession,
     assert current_resp.status_code == 200
     assert current_resp.json()["id"] == publication_id
     assert current_resp.json()["superseded_by"] is None
+
+
+async def test_republishing_unchanged_prices_does_not_notify_the_buyer(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
+    """The follow-up fix to the acknowledgment-carry-forward flaw: a
+    same-price republish (the abattoir resends an unchanged book) must not
+    buzz the buyer's phone with another "New Do Not Buy Price" alert —
+    confirmed with the business, since a daily no-news alert trains the
+    buyer to ignore the real ones. The first-ever publish for an org is
+    always genuinely new information; a second, byte-identical submission
+    republished right after it is not."""
+    headers = await accountant_headers(client, db, everhealth_org, email="bing-gate5@test.com")
+
+    first_snapshot = await build_publishable_snapshot(client, headers)
+    first_publish = await client.post(
+        "/api/v1/publications", json={"snapshot_id": first_snapshot["id"]}, headers=headers
+    )
+    assert first_publish.status_code == 201, first_publish.text
+    assert first_publish.json()["buyer_notified"] is True  # nothing published before this org's first publish
+
+    second_snapshot = await build_publishable_snapshot(client, headers)
+    second_publish = await client.post(
+        "/api/v1/publications", json={"snapshot_id": second_snapshot["id"]}, headers=headers
+    )
+    assert second_publish.status_code == 201, second_publish.text
+    assert second_publish.json()["buyer_notified"] is False  # same species, same prices as the first publish
+
+    # And it's durable, not just the immediate response — a later read of
+    # this same publication (e.g. from the console's publication history)
+    # must agree.
+    current_resp = await client.get("/api/v1/publications/current", headers=headers)
+    assert current_resp.json()["buyer_notified"] is False

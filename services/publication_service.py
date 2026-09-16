@@ -13,6 +13,17 @@ kept deliberately separate:
 2. `publish` — the full §5.7 gate (BLOCK issues refuse publication; every
    WARN/CORRECTION issue on an ACTIVE line must be individually
    acknowledged first) plus the supersession bookkeeping.
+
+`publish` also decides whether this publication carries genuinely new
+information for the buyer (`_prices_changed`, against whichever publication
+it supersedes) — a per-species price move, or a species appearing/dropping
+out of the active book. That flag (`DnbpPublication.buyer_notified`) is the
+only thing services/delivery_service.py's `fan_out` uses to decide whether
+to interrupt the buyer with a Web Push; every publish still happens, still
+supersedes the previous one, and still refreshes the buyer's on-screen
+"updated X min ago" status regardless — confirmed with the business that a
+same-price republish should stay silent on the buyer's phone rather than
+retrain them to ignore "New Do Not Buy Price" alerts.
 """
 
 import uuid
@@ -96,6 +107,20 @@ async def compute_publication_lines(db: AsyncSession, snapshot_id: uuid.UUID) ->
     return drafts
 
 
+def _prices_changed(previous_lines: list[DnbpPublicationLine], drafts: list[PublicationLineDraft]) -> bool:
+    """Whole-species-list-and-price comparison, not per-line — a species
+    appearing or dropping out of the active book entirely is exactly as
+    real a change to the buyer as its $/kg moving (confirmed with the
+    business); target_heads/weight_band shifting on their own, with the
+    same species list and the same prices, is deliberately not enough on
+    its own to interrupt the buyer."""
+    if not previous_lines:
+        return True  # nothing published before — always genuinely new
+    previous_by_species = {line.species: line.dnbp_per_kg for line in previous_lines}
+    current_by_species = {draft.species: draft.dnbp_per_kg for draft in drafts}
+    return previous_by_species != current_by_species
+
+
 async def _assert_publishable(db: AsyncSession, snapshot_id: uuid.UUID) -> None:
     active_issues = await validation_issues_repo.list_active_by_snapshot(db, snapshot_id)
 
@@ -122,6 +147,8 @@ async def publish(
         raise NothingToPublish()
 
     previous_current = await publications_repo.get_current_for_org(db, snapshot.org_id)
+    previous_lines = await publications_repo.list_lines(db, previous_current.id) if previous_current else []
+    buyer_notified = _prices_changed(previous_lines, drafts)
 
     now = datetime.now(UTC)
     publication = DnbpPublication(
@@ -131,6 +158,7 @@ async def publish(
         effective_from=now,
         engine_version=ENGINE_VERSION,
         notes=notes,
+        buyer_notified=buyer_notified,
     )
     await publications_repo.create(db, publication)
 
@@ -166,6 +194,7 @@ async def publish(
         after={
             "snapshot_id": str(snapshot.id),
             "species": [{"species": d.species, "dnbp_per_kg": str(d.dnbp_per_kg)} for d in drafts],
+            "buyer_notified": buyer_notified,
         },
     )
 

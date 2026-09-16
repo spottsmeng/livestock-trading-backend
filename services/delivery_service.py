@@ -64,37 +64,54 @@ def _round_down_2dp(value: Decimal) -> str:
 
 
 async def fan_out(
-    db: AsyncSession, redis: Redis, *, publication: DnbpPublication, lines: list[DnbpPublicationLine]
+    db: AsyncSession,
+    redis: Redis,
+    *,
+    publication: DnbpPublication,
+    lines: list[DnbpPublicationLine],
+    buyer_notified: bool,
 ) -> None:
     payload = buyer_safe_payload(publication, lines)
 
-    # Web Push — the primary alerting channel (§10), fires even closed.
+    # Web Push — the primary ALERTING channel (§10), fires even closed. Only
+    # for a publication that actually changes something the buyer needs to
+    # act on (services/publication_service.py's _prices_changed) — an
+    # interruptive push on a same-price republish would train the buyer to
+    # tap "New Do Not Buy Price" away unread, which is exactly wrong on the
+    # day it's a real change.
     buyers = await users_repo.list_users(db, role=Role.BUYER, is_active=True)
-    for user, _role in buyers:
-        subscriptions = await push_subscriptions_repo.list_for_user(db, user.id)
-        if not subscriptions:
-            continue
-        species_summary = " · ".join(f"{s['species']} ${s['dnbp_per_kg']}/kg" for s in payload["species"][:3])
-        push_body = {
-            "title": "New Do Not Buy Price",
-            "body": f"{species_summary} · Tap to open",
-            "publication_id": str(publication.id),
-        }
-        for sub in subscriptions:
-            result = send_push(PushSubscriptionInfo(endpoint=sub.endpoint, p256dh=sub.p256dh, auth=sub.auth), push_body)
-            if result.gone:
-                await push_subscriptions_repo.delete_by_endpoint(db, sub.endpoint)
+    if buyer_notified:
+        for user, _role in buyers:
+            subscriptions = await push_subscriptions_repo.list_for_user(db, user.id)
+            if not subscriptions:
+                continue
+            species_summary = " · ".join(f"{s['species']} ${s['dnbp_per_kg']}/kg" for s in payload["species"][:3])
+            push_body = {
+                "title": "New Do Not Buy Price",
+                "body": f"{species_summary} · Tap to open",
+                "publication_id": str(publication.id),
+            }
+            for sub in subscriptions:
+                result = send_push(
+                    PushSubscriptionInfo(endpoint=sub.endpoint, p256dh=sub.p256dh, auth=sub.auth), push_body
+                )
+                if result.gone:
+                    await push_subscriptions_repo.delete_by_endpoint(db, sub.endpoint)
 
-    # WebSocket — instant while foregrounded (§10); every currently
-    # connected buyer socket is subscribed to this channel (ws/routes.py).
+    # WebSocket/poll — always fires, regardless of buyer_notified. This is
+    # passive status sync (GET /buyer/dnbp/current's "updated X min ago"),
+    # not an interruption, so an unchanged-price day still silently keeps
+    # that timestamp honest instead of letting it look stale.
     await channels.publish_event(redis, channels.buyer_channel(publication.org_id), "dnbp.published", payload)
 
-    # Console sees the publish immediately too (§11.5's post-publish tracker).
+    # Console sees the publish immediately too (§11.5's post-publish
+    # tracker) — including whether this one actually notified anyone, so
+    # the publisher isn't left guessing what today's click did.
     await channels.publish_event(
         redis,
         channels.console_channel(publication.org_id),
         "dnbp.published",
-        {"publication_id": str(publication.id), "buyer_count": len(buyers)},
+        {"publication_id": str(publication.id), "buyer_count": len(buyers), "buyer_notified": buyer_notified},
     )
 
 

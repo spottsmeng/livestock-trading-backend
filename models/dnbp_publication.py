@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ARRAY, DateTime, Enum, ForeignKey, Numeric, String, func
+from sqlalchemy import ARRAY, Boolean, DateTime, Enum, ForeignKey, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,6 +33,15 @@ class DnbpPublication(TimestampedBase):
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     engine_version: Mapped[str] = mapped_column(String)
     notes: Mapped[str | None] = mapped_column(String, default=None)
+
+    # True unless this publish's per-species prices (and species list) are
+    # identical to the publication it supersedes — services/
+    # publication_service.py's _prices_changed. Gates only the buyer-facing
+    # Web Push in services/delivery_service.py.fan_out (an interruption,
+    # reserved for genuinely new information); the WS/poll refresh that
+    # keeps the buyer's "updated X min ago" status honest always fires
+    # regardless, so a quiet, unchanged day is still silently confirmed.
+    buyer_notified: Mapped[bool] = mapped_column(Boolean, default=True)
 
     superseded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("dnbp_publications.id"), default=None
