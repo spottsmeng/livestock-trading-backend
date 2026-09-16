@@ -45,6 +45,13 @@ def buyer_safe_payload(publication: DnbpPublication, lines: list[DnbpPublication
             {
                 "species": line.species,
                 "dnbp_per_kg": _round_down_2dp(line.dnbp_per_kg),
+                # Rounded the same way as dnbp_per_kg — this must match
+                # what the buyer's screen actually showed last time, so a
+                # client-side delta (current - previous) reproduces exactly
+                # the "▲ +0.12" the buyer would compute in their head.
+                "previous_dnbp_per_kg": (
+                    _round_down_2dp(line.previous_dnbp_per_kg) if line.previous_dnbp_per_kg is not None else None
+                ),
                 "target_heads": str(line.target_heads) if line.target_heads is not None else None,
                 "weight_band": (
                     {"min": str(line.target_weight_kg_min), "max": str(line.target_weight_kg_max)}

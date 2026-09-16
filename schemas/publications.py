@@ -24,6 +24,13 @@ class PublicationLineResponse(BaseModel):
     publication_id: uuid.UUID
     species: str
     dnbp_per_kg: Decimal
+    # §11.5's own "Summary of DNBP per species with change vs the previous
+    # publication (▲▼ and %)" — same underlying column §12.2's buyer screen
+    # already reads (models/dnbp_publication.py's DnbpPublicationLine),
+    # surfaced here too since the console needs the same figure the buyer
+    # does, just with a percentage alongside it (built in the frontend from
+    # this and dnbp_per_kg, not stored separately).
+    previous_dnbp_per_kg: Decimal | None
     target_heads: Decimal | None
     target_weight_kg_min: Decimal | None
     target_weight_kg_max: Decimal | None

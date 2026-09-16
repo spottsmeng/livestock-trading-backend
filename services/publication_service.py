@@ -149,6 +149,7 @@ async def publish(
     previous_current = await publications_repo.get_current_for_org(db, snapshot.org_id)
     previous_lines = await publications_repo.list_lines(db, previous_current.id) if previous_current else []
     buyer_notified = _prices_changed(previous_lines, drafts)
+    previous_price_by_species = {line.species: line.dnbp_per_kg for line in previous_lines}
 
     now = datetime.now(UTC)
     publication = DnbpPublication(
@@ -167,6 +168,7 @@ async def publish(
             publication_id=publication.id,
             species=draft.species,
             dnbp_per_kg=draft.dnbp_per_kg,
+            previous_dnbp_per_kg=previous_price_by_species.get(draft.species),
             target_heads=draft.target_heads,
             target_weight_kg_min=draft.target_weight_kg_min,
             target_weight_kg_max=draft.target_weight_kg_max,

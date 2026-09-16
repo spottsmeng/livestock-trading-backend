@@ -78,6 +78,16 @@ class DnbpPublicationLine(TimestampedBase):
     )
     species: Mapped[str] = mapped_column(String)  # open registry, §6.9 — never an Enum
     dnbp_per_kg: Mapped[Decimal] = mapped_column(MONEY)
+
+    # This species' dnbp_per_kg in whichever publication this one supersedes
+    # (services/publication_service.py's publish), or null if the species
+    # wasn't in that prior publication (including this org's first-ever
+    # publish). Implements §12.2's own buyer-screen mockup, which shows a
+    # "▲ +0.12" change-vs-previous-publication next to the price — buyer-
+    # safe by construction, same as dnbp_per_kg itself (see schemas/buyer.py's
+    # module docstring and tests/test_buyer_response_isolation.py).
+    previous_dnbp_per_kg: Mapped[Decimal | None] = mapped_column(MONEY, default=None)
+
     target_heads: Mapped[Decimal | None] = mapped_column(MONEY, default=None)
     target_weight_kg_min: Mapped[Decimal | None] = mapped_column(MONEY, default=None)
     target_weight_kg_max: Mapped[Decimal | None] = mapped_column(MONEY, default=None)

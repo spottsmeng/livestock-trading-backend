@@ -13,6 +13,7 @@ from tests.pipeline_helpers import (
     acknowledge_all_active_issues,
     build_calculated_snapshot,
     build_publishable_snapshot,
+    buyer_headers,
 )
 
 
@@ -106,8 +107,52 @@ async def test_republishing_unchanged_prices_does_not_notify_the_buyer(
     assert second_publish.status_code == 201, second_publish.text
     assert second_publish.json()["buyer_notified"] is False  # same species, same prices as the first publish
 
+    # §11.5's console-side "change vs the previous publication" needs the
+    # same figure §12.2's buyer screen does — confirm it's on this response too.
+    first_sheep = next(line for line in first_publish.json()["lines"] if line["species"] == "SHEEP")
+    second_sheep = next(line for line in second_publish.json()["lines"] if line["species"] == "SHEEP")
+    assert first_sheep["previous_dnbp_per_kg"] is None
+    assert second_sheep["previous_dnbp_per_kg"] == first_sheep["dnbp_per_kg"]
+
     # And it's durable, not just the immediate response — a later read of
     # this same publication (e.g. from the console's publication history)
     # must agree.
     current_resp = await client.get("/api/v1/publications/current", headers=headers)
     assert current_resp.json()["buyer_notified"] is False
+
+
+async def test_buyer_screen_carries_the_previous_publication_price_per_species(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
+    """§12.2's own mockup shows "$9.38  ▲ +0.12" next to the price — a
+    change-vs-previous-publication the buyer's screen can only render if
+    the API actually hands it the prior price. Nothing to compare against
+    on an org's first-ever publish (no arrow in the PRD's own mockup for
+    that case either); a second publish must carry the first one's price
+    forward per species, so the buyer's client can compute the delta
+    itself (§2.2 buyer-safe: this is the same already-safe dnbp_per_kg
+    field, just the earlier value of it)."""
+    owner_headers = await accountant_headers(client, db, everhealth_org, email="bing-gate6@test.com")
+    buyer_creds = await buyer_headers(client, db, everhealth_org, email="buyer-gate6@test.com")
+
+    first_snapshot = await build_publishable_snapshot(client, owner_headers)
+    first_publish = await client.post(
+        "/api/v1/publications", json={"snapshot_id": first_snapshot["id"]}, headers=owner_headers
+    )
+    assert first_publish.status_code == 201, first_publish.text
+
+    first_buyer_view = await client.get("/api/v1/buyer/dnbp/current", headers=buyer_creds)
+    assert first_buyer_view.status_code == 200, first_buyer_view.text
+    first_sheep = next(line for line in first_buyer_view.json()["species"] if line["species"] == "SHEEP")
+    assert first_sheep["previous_dnbp_per_kg"] is None  # nothing published before this org's first publish
+
+    second_snapshot = await build_publishable_snapshot(client, owner_headers)
+    second_publish = await client.post(
+        "/api/v1/publications", json={"snapshot_id": second_snapshot["id"]}, headers=owner_headers
+    )
+    assert second_publish.status_code == 201, second_publish.text
+
+    second_buyer_view = await client.get("/api/v1/buyer/dnbp/current", headers=buyer_creds)
+    second_sheep = next(line for line in second_buyer_view.json()["species"] if line["species"] == "SHEEP")
+    assert second_sheep["previous_dnbp_per_kg"] == first_sheep["dnbp_per_kg"]  # unchanged file -> unchanged price
+    assert second_sheep["dnbp_per_kg"] == first_sheep["dnbp_per_kg"]  # so the buyer's own arrow logic shows no arrow

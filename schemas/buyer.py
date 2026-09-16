@@ -23,6 +23,7 @@ class WeightBand(BaseModel):
 class DnbpSpeciesLine(BaseModel):
     species: str
     dnbp_per_kg: str
+    previous_dnbp_per_kg: str | None
     target_heads: str | None
     weight_band: WeightBand | None
 
