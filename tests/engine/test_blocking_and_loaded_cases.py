@@ -144,9 +144,12 @@ def test_loaded_lines_never_reach_active_rule_functions() -> None:
     assert referenced_names.isdisjoint(active_only_attr_names)
 
 
-def test_dnbp_below_cost_and_negative_margin_are_active_only_warns() -> None:
-    """Sanity check that WARN-level pricing rules exist and are reachable
-    on an ACTIVE line, complementing the BLOCK-focused cases above."""
+def test_negative_margin_is_active_only_warn() -> None:
+    """Sanity check that the NEGATIVE_MARGIN WARN-level pricing rule exists
+    and is reachable on an ACTIVE line, complementing the BLOCK-focused
+    cases above. DNBP sitting well below livestock cost here is the
+    healthy, intended state (see test below) — it must NOT also raise
+    MARGIN_BUFFER_ERODED."""
     config = config_from_reference_tables(_REFERENCE_TABLES)
     line = OrderLineInput(
         species="SHEEP",
@@ -163,5 +166,30 @@ def test_dnbp_below_cost_and_negative_margin_are_active_only_warns() -> None:
 
     assert workings is not None
     codes_fired = _issue_codes(found_issues)
-    assert "DNBP_BELOW_COST" in codes_fired
     assert "NEGATIVE_MARGIN" in codes_fired
+    assert "MARGIN_BUFFER_ERODED" not in codes_fired
+
+
+def test_margin_buffer_eroded_is_active_only_warn() -> None:
+    """MARGIN_BUFFER_ERODED fires once DNBP rises to meet or exceed Peter's
+    expected livestock cost — the buffer DNBP is supposed to keep below cost
+    is gone. A large price against a small expected cost is the clean case
+    that trips this without also tripping NEGATIVE_MARGIN."""
+    config = config_from_reference_tables(_REFERENCE_TABLES)
+    line = OrderLineInput(
+        species="SHEEP",
+        lifecycle=Lifecycle.ACTIVE,
+        avg_price_aud=Decimal("100.00"),  # large price -> AC well above livestock cost
+        expected_livestock_cost_per_kg=Decimal("5"),
+        pack_cost_ph=Decimal("4"),
+        offal_return_ph=Decimal("8"),
+        skin_return_ph=Decimal("10"),
+        avg_weight_kg=Decimal("22"),
+    )
+
+    workings, found_issues = compute_order_workings(line, config)
+
+    assert workings is not None
+    codes_fired = _issue_codes(found_issues)
+    assert "MARGIN_BUFFER_ERODED" in codes_fired
+    assert "NEGATIVE_MARGIN" not in codes_fired

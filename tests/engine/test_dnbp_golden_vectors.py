@@ -51,10 +51,10 @@ def test_golden_vector_matches_to_10dp(vector: dict) -> None:
 
     assert workings is not None, f"{vector['id']}: expected an ACTIVE line to produce a workings row"
     # These vectors aren't annotated with issue expectations (that's what
-    # blocking_cases[] is for) — a WARN like DNBP_BELOW_COST can legitimately
-    # fire here (e.g. sheep_cif_actual_weight_28_differs_from_standard_22,
-    # where AC really is below L). Only BLOCK issues would be a real bug: a
-    # golden vector's AC is by definition computable.
+    # blocking_cases[] is for) — a WARN like MARGIN_BUFFER_ERODED can
+    # legitimately fire here (e.g. a vector where AC has risen to meet or
+    # exceed L). Only BLOCK issues would be a real bug: a golden vector's AC
+    # is by definition computable.
     assert not any(i.severity.value == "BLOCK" for i in found_issues), (
         f"{vector['id']}: unexpected BLOCK issue on a vector with a known-good AC: {found_issues}"
     )

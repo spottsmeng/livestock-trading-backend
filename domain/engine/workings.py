@@ -196,10 +196,17 @@ def _compute_active_line_workings(
             ValidationIssue(codes.NEGATIVE_MARGIN, Severity.WARN, "Negative margin at expected livestock cost")
         )
 
-    if diff_vs_peter is not None and diff_vs_peter < 0:
+    # DNBP is *supposed* to sit below Peter's expected livestock cost — that
+    # buffer is what leaves room for margin once the animal is actually
+    # bought. The risk case is the ceiling catching up to or passing cost
+    # (buffer gone), never the ceiling sitting below it (that's the healthy
+    # state, not a loss signal).
+    if diff_vs_peter is not None and diff_vs_peter >= 0:
         found_issues.append(
             ValidationIssue(
-                codes.DNBP_BELOW_COST, Severity.WARN, "DNBP is below expected livestock cost — order likely loss-making"
+                codes.MARGIN_BUFFER_ERODED,
+                Severity.WARN,
+                "DNBP has risen to meet or exceed Peter's expected livestock cost — margin buffer eroded",
             )
         )
 
