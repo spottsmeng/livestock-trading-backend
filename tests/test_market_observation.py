@@ -140,3 +140,66 @@ async def test_observations_are_org_scoped(client, db: AsyncSession, everhealth_
     list_resp = await client.get("/api/v1/market-intel/observations", headers=other_owner)
     assert list_resp.status_code == 200
     assert list_resp.json() == []
+
+
+async def test_list_and_summary_filters_match_case_insensitive_substrings(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
+    """species is always stored upper-case (§6.9's open-registry
+    convention) and saleyard/competitor_name are free text an observer may
+    type in any casing — a console user typing a partial, differently-cased
+    filter (e.g. "wa" while the field holds "Wagga") must match as they
+    type, not only once the full, exactly-cased word is entered."""
+    b_headers = await buyer_headers(client, db, everhealth_org, email="buyer-mi6@test.com")
+    await client.post(
+        "/api/v1/market-intel/observations",
+        json=_body(
+            client_uuid="20202020-2020-4202-8202-202020202020",
+            saleyard="Wagga",
+            species="LAMB",
+            competitor_name="Rival Meats Co",
+        ),
+        headers=b_headers,
+    )
+
+    o_headers = await owner_headers(client, db, everhealth_org, email="owner-mi3@test.com")
+    list_resp = await client.get(
+        "/api/v1/market-intel/observations",
+        params={"saleyard": "wa", "species": "Lamb", "competitor_name": "rival meats co"},
+        headers=o_headers,
+    )
+    assert list_resp.status_code == 200, list_resp.text
+    assert len(list_resp.json()) == 1
+
+    summary_resp = await client.get(
+        "/api/v1/market-intel/summary", params={"saleyard": "WAG", "species": "lamb"}, headers=o_headers
+    )
+    assert summary_resp.status_code == 200, summary_resp.text
+    assert len(summary_resp.json()["rows"]) == 1
+
+
+async def test_competitor_name_filter_escapes_like_wildcards(
+    client, db: AsyncSession, everhealth_org: Organisation
+):
+    """A literal "%"/"_" typed into a free-text filter must match itself,
+    not act as an ILIKE wildcard — see repositories/market_observations.py's
+    _contains() helper."""
+    b_headers = await buyer_headers(client, db, everhealth_org, email="buyer-mi7@test.com")
+    await client.post(
+        "/api/v1/market-intel/observations",
+        json=_body(client_uuid="30303030-3030-4303-8303-303030303030", competitor_name="Rival_Meats%Co"),
+        headers=b_headers,
+    )
+    await client.post(
+        "/api/v1/market-intel/observations",
+        json=_body(client_uuid="30303030-3030-4303-8303-303030303031", competitor_name="RivalXMeatsYCo"),
+        headers=b_headers,
+    )
+
+    o_headers = await owner_headers(client, db, everhealth_org, email="owner-mi4@test.com")
+    resp = await client.get(
+        "/api/v1/market-intel/observations", params={"competitor_name": "Rival_Meats%Co"}, headers=o_headers
+    )
+    assert resp.status_code == 200, resp.text
+    names = {row["competitor_name"] for row in resp.json()}
+    assert names == {"Rival_Meats%Co"}

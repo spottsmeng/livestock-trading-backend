@@ -9,6 +9,15 @@ from models.market_observation import MarketObservation
 DUPLICATE_WINDOW = timedelta(minutes=2)  # same non-blocking flag as BuyEntry's — see repositories/buy_entries.py
 
 
+def _contains(value: str) -> str:
+    """Wraps free-typed filter text for a case-insensitive substring match
+    (ILIKE), escaping ILIKE's own wildcard characters first so a literal
+    "%" or "_" in, say, a competitor name matches itself rather than acting
+    as a wildcard."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 async def create(db: AsyncSession, observation: MarketObservation) -> MarketObservation:
     db.add(observation)
     await db.flush()
@@ -36,18 +45,26 @@ async def list_for_org(
 ) -> list[MarketObservation]:
     """OWNER/ACCOUNTANT read path (§ market intelligence) — every buyer in
     the org's observations, never scoped to a single observer the way
-    BuyEntry's list_for_buyer is."""
+    BuyEntry's list_for_buyer is.
+
+    saleyard/species/competitor_name match as a case-insensitive substring
+    (type-to-filter, e.g. "wa" matches "Wagga" before the full word is
+    typed) rather than an exact match: species is always stored upper-case
+    (the open-registry convention, §6.9) while a human typing a filter in
+    the console has no reason to know that, and competitor_name is free
+    text an observer may have typed with any casing across different
+    entries."""
     stmt = select(MarketObservation).where(MarketObservation.org_id == org_id, MarketObservation.is_deleted.is_(False))
     if trade_date_from is not None:
         stmt = stmt.where(MarketObservation.trade_date >= trade_date_from)
     if trade_date_to is not None:
         stmt = stmt.where(MarketObservation.trade_date <= trade_date_to)
     if saleyard is not None:
-        stmt = stmt.where(MarketObservation.saleyard == saleyard)
+        stmt = stmt.where(MarketObservation.saleyard.ilike(_contains(saleyard), escape="\\"))
     if species is not None:
-        stmt = stmt.where(MarketObservation.species == species)
+        stmt = stmt.where(MarketObservation.species.ilike(_contains(species), escape="\\"))
     if competitor_name is not None:
-        stmt = stmt.where(MarketObservation.competitor_name == competitor_name)
+        stmt = stmt.where(MarketObservation.competitor_name.ilike(_contains(competitor_name), escape="\\"))
     result = await db.execute(stmt.order_by(MarketObservation.client_created_at.desc()))
     return list(result.scalars().all())
 
