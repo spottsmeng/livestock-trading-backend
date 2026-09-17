@@ -43,6 +43,7 @@ _WIPE_TABLES = [
     "buy_instruction_lines",
     "buy_instruction_line_fills",
     "buy_entries",
+    "market_observations",
     "audit_log",
 ]
 

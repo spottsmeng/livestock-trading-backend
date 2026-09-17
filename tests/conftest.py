@@ -30,6 +30,7 @@ _TABLES_IN_DELETE_ORDER = [
     "buy_instruction_lines",
     "buy_instructions",
     "buy_entries",
+    "market_observations",
     "dnbp_publication_lines",
     "dnbp_publication_deliveries",
     "dnbp_publications",
