@@ -42,7 +42,14 @@ async def test_buyer_sees_instruction_current_and_can_acknowledge(
     assert len(body["lines"]) == len(instruction["lines"])
 
     line = body["lines"][0]
-    assert set(line.keys()) == {"contract_no", "species", "target_heads", "weight_requirement_kg", "dnbp_per_kg"}
+    assert set(line.keys()) == {
+        "contract_no",
+        "species",
+        "schw_kg",
+        "target_heads",
+        "weight_requirement_kg",
+        "dnbp_per_kg",
+    }
 
     ack_resp = await client.post(f"/api/v1/buyer/instruction/{instruction['id']}/acknowledge", headers=buyer)
     assert ack_resp.status_code == 204, ack_resp.text

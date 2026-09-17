@@ -98,7 +98,7 @@ async def dnbp_current(
     if publication is None:
         raise NotFound("Published DNBP")
     lines = await publications_repo.list_lines(db, publication.id)
-    return DnbpCurrentResponse(**delivery_service.buyer_safe_payload(publication, lines))
+    return DnbpCurrentResponse(**await delivery_service.buyer_safe_payload(db, publication, lines))
 
 
 @router.post("/dnbp/ack", status_code=204)
@@ -121,18 +121,28 @@ async def dnbp_ack(
 
 @router.post("/entries", response_model=BuyEntryResponse, status_code=201)
 async def create_entry(
-    body: BuyEntryCreateRequest, current: CurrentUser = Depends(_buyer_only), db: AsyncSession = Depends(get_db)
+    body: BuyEntryCreateRequest,
+    current: CurrentUser = Depends(_buyer_only),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(redis_dep),
 ) -> BuyEntryResponse:
     result = await buy_entry_service.create_or_sync_entry(
         db, buyer_id=current.user_id, org_id=current.org_id, payload=_to_input(body)
     )
     await db.commit()
+    # Live buying-progress counter (see services/delivery_service.py's
+    # push_buying_progress) — fires the instant this buy is saved, so the
+    # buyer's own screen and the Trading Console both update in real time.
+    await delivery_service.push_buying_progress(db, redis, org_id=current.org_id, species={body.species})
     return _to_entry_response(result.entry, is_possible_duplicate=result.is_possible_duplicate)
 
 
 @router.post("/entries/bulk", response_model=list[BulkSyncItemResult])
 async def bulk_sync_entries(
-    body: BuyEntryBulkRequest, current: CurrentUser = Depends(_buyer_only), db: AsyncSession = Depends(get_db)
+    body: BuyEntryBulkRequest,
+    current: CurrentUser = Depends(_buyer_only),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(redis_dep),
 ) -> list[BulkSyncItemResult]:
     """§9.5, §12.7 — the offline queue flush. Per-item results: one failed
     item never fails the whole batch, so the PWA knows exactly which queued
@@ -140,6 +150,12 @@ async def bulk_sync_entries(
     items = [_to_input(entry) for entry in body.entries]
     results = await buy_entry_service.bulk_sync(db, buyer_id=current.user_id, org_id=current.org_id, items=items)
     await db.commit()
+    # One push covering every distinct species in the batch, not one per
+    # entry — an offline buyer reconnecting with a large queue shouldn't
+    # fire a WS event storm (see push_buying_progress's docstring).
+    await delivery_service.push_buying_progress(
+        db, redis, org_id=current.org_id, species={item.species for item in items}
+    )
     return [BulkSyncItemResult(**r) for r in results]
 
 
@@ -233,6 +249,7 @@ async def instruction_current(
             InstructionLineResponse(
                 contract_no=line.contract_no,
                 species=line.species,
+                schw_kg=str(line.schw_kg),
                 target_heads=str(line.expected_heads),
                 weight_requirement_kg=str(line.weight_requirement_kg),
                 dnbp_per_kg=str(line.dnbp_per_kg),

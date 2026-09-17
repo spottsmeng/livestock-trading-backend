@@ -68,3 +68,21 @@ class DeliveryStateResponse(BaseModel):
 
 class PublicationDetailResponse(PublicationResponse):
     deliveries: list[DeliveryStateResponse]
+
+
+class SpeciesProgressLine(BaseModel):
+    """Beyond §8/§9.4's literal spec — see services/buying_progress_service.py
+    and domain/buyer/buying_progress.py for why this exists and how
+    `heads_bought`'s counting window is chosen. Deliberately the same shape
+    (and same underlying computation, via compute_species_progress) as the
+    `heads_bought` field on schemas/buyer.py's DnbpSpeciesLine, so the office
+    can never see a number that drifts from what the buyer sees."""
+
+    species: str
+    target_heads: Decimal | None
+    heads_bought: int
+
+
+class SpeciesProgressResponse(BaseModel):
+    publication_id: uuid.UUID
+    species: list[SpeciesProgressLine]

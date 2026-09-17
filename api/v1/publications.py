@@ -11,8 +11,15 @@ from models.dnbp_publication import DnbpPublication
 from models.enums import Role
 from repositories import order_snapshots as order_snapshots_repo
 from repositories import publications as publications_repo
-from schemas.publications import PublicationDetailResponse, PublicationLineResponse, PublicationResponse, PublishRequest
-from services import delivery_service, publication_service
+from schemas.publications import (
+    PublicationDetailResponse,
+    PublicationLineResponse,
+    PublicationResponse,
+    PublishRequest,
+    SpeciesProgressLine,
+    SpeciesProgressResponse,
+)
+from services import buying_progress_service, delivery_service, publication_service
 
 router = APIRouter(prefix="/publications", tags=["publications"])
 
@@ -99,6 +106,29 @@ async def get_current(
     if publication is None:
         raise NotFound("Publication")
     return await _to_detail(db, publication)
+
+
+@router.get("/current/progress", response_model=SpeciesProgressResponse)
+async def get_current_progress(
+    current: CurrentUser = Depends(_trading_console), db: AsyncSession = Depends(get_db)
+) -> SpeciesProgressResponse:
+    """Beyond §9.6's literal route list — the Trading Console's half of the
+    live buying-progress counter (see services/buying_progress_service.py).
+    Calls the exact same compute_species_progress the buyer's own
+    GET /buyer/dnbp/current uses, so Bing and the buyer can never see
+    numbers that drift apart."""
+    publication = await publications_repo.get_current_for_org(db, current.org_id)
+    if publication is None:
+        raise NotFound("Publication")
+    lines = await publications_repo.list_lines(db, publication.id)
+    progress = await buying_progress_service.compute_species_progress(db, current.org_id, publication, lines)
+    return SpeciesProgressResponse(
+        publication_id=publication.id,
+        species=[
+            SpeciesProgressLine(species=p.species, target_heads=p.target_heads, heads_bought=p.heads_bought)
+            for p in progress
+        ],
+    )
 
 
 @router.get("/{publication_id}", response_model=PublicationDetailResponse)

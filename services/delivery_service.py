@@ -25,17 +25,28 @@ from core.push import PushSubscriptionInfo, send_push
 from models.dnbp_publication import DnbpPublication, DnbpPublicationLine
 from models.enums import DeliveryChannel, Role
 from repositories import publication_deliveries as deliveries_repo
+from repositories import publications as publications_repo
 from repositories import push_subscriptions as push_subscriptions_repo
 from repositories import users as users_repo
-from services import escalation
+from services import buying_progress_service, escalation
 from ws import channels
 
 
-def buyer_safe_payload(publication: DnbpPublication, lines: list[DnbpPublicationLine]) -> dict:
+async def buyer_safe_payload(db: AsyncSession, publication: DnbpPublication, lines: list[DnbpPublicationLine]) -> dict:
     """The exact shape sent over WS and Web Push, and returned from
     GET /buyer/dnbp/current — buyer-safe by construction, since it is
     built only from DnbpPublicationLine, which carries no price/customer/
-    margin column at all (§2.2)."""
+    margin column at all (§2.2).
+
+    `heads_bought` (see services/buying_progress_service.py) is the one
+    field here that isn't a plain column read — async because it queries
+    buy_entries live. Kept in this same payload builder, not bolted on
+    separately, so the buyer and the Trading Console's
+    GET /publications/current/progress can never see numbers that drift
+    apart (both call compute_species_progress)."""
+    progress_by_species = {
+        p.species: p for p in await buying_progress_service.compute_species_progress(db, publication.org_id, publication, lines)
+    }
     return {
         "publication_id": str(publication.id),
         "published_at": publication.published_at.isoformat(),
@@ -53,6 +64,9 @@ def buyer_safe_payload(publication: DnbpPublication, lines: list[DnbpPublication
                     _round_down_2dp(line.previous_dnbp_per_kg) if line.previous_dnbp_per_kg is not None else None
                 ),
                 "target_heads": str(line.target_heads) if line.target_heads is not None else None,
+                "heads_bought": (
+                    str(progress_by_species[line.species].heads_bought) if line.species in progress_by_species else "0"
+                ),
                 "weight_band": (
                     {"min": str(line.target_weight_kg_min), "max": str(line.target_weight_kg_max)}
                     if line.target_weight_kg_min is not None
@@ -78,7 +92,7 @@ async def fan_out(
     lines: list[DnbpPublicationLine],
     buyer_notified: bool,
 ) -> None:
-    payload = buyer_safe_payload(publication, lines)
+    payload = await buyer_safe_payload(db, publication, lines)
 
     # Web Push — the primary ALERTING channel (§10), fires even closed. Only
     # for a publication that actually changes something the buyer needs to
@@ -120,6 +134,41 @@ async def fan_out(
         "dnbp.published",
         {"publication_id": str(publication.id), "buyer_count": len(buyers), "buyer_notified": buyer_notified},
     )
+
+
+async def push_buying_progress(db: AsyncSession, redis: Redis, *, org_id: uuid.UUID, species: set[str]) -> None:
+    """Fired after a buy_entry write (api/v1/buyer.py's create_entry and
+    bulk_sync_entries, after their db.commit()) — the real-time half of the
+    live buying-progress counter (see services/buying_progress_service.py
+    and domain/buyer/buying_progress.py for the "why" and the reset rule).
+    Pushes to both channels.buyer_channel and channels.console_channel so
+    the buyer's own screen and the Trading Console update within the same
+    instant, off the exact same computation, no polling required.
+
+    A no-op when nothing is currently published — there's no target to
+    measure progress against yet, so nothing to push."""
+    publication = await publications_repo.get_current_for_org(db, org_id)
+    if publication is None or not species:
+        return
+    lines = await publications_repo.list_lines(db, publication.id)
+    progress = await buying_progress_service.compute_species_progress(
+        db, org_id, publication, lines, species_filter=species
+    )
+    if not progress:
+        return
+    payload = {
+        "publication_id": str(publication.id),
+        "species": [
+            {
+                "species": p.species,
+                "target_heads": str(p.target_heads) if p.target_heads is not None else None,
+                "heads_bought": str(p.heads_bought),
+            }
+            for p in progress
+        ],
+    }
+    await channels.publish_event(redis, channels.buyer_channel(org_id), "buying.progress_updated", payload)
+    await channels.publish_event(redis, channels.console_channel(org_id), "buying.progress_updated", payload)
 
 
 async def acknowledge(db: AsyncSession, redis: Redis, *, publication: DnbpPublication, buyer_id: uuid.UUID) -> None:

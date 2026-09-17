@@ -25,6 +25,7 @@ class DnbpSpeciesLine(BaseModel):
     dnbp_per_kg: str
     previous_dnbp_per_kg: str | None
     target_heads: str | None
+    heads_bought: str
     weight_band: WeightBand | None
 
 
@@ -115,6 +116,7 @@ class InstructionLineResponse(BaseModel):
 
     contract_no: str | None
     species: str
+    schw_kg: str
     target_heads: str
     weight_requirement_kg: str
     dnbp_per_kg: str
