@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 class GenerateBuyInstructionRequest(BaseModel):
     snapshot_id: uuid.UUID
-    publication_id: uuid.UUID
     trade_date: date | None = None
     note: str | None = None
 
@@ -54,7 +53,7 @@ class BuyInstructionResponse(BaseModel):
     version: int
     trade_date: date
     snapshot_id: uuid.UUID
-    publication_id: uuid.UUID
+    publication_id: uuid.UUID | None
     prepared_by: uuid.UUID
     approved_by: uuid.UUID | None
     approved_at: datetime | None

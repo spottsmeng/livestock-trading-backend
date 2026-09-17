@@ -189,21 +189,6 @@ class RegistryCodeExists(AppError):
         )
 
 
-class PublicationSnapshotMismatch(AppError):
-    """§9.6: `POST /buy-instructions` must refuse if `publication_id` does
-    not actually belong to `snapshot_id` — see
-    services/buy_instruction_service.py's module docstring for why this
-    validation is what guarantees every generated line already has a valid
-    `bing_dnbp`."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            "PUBLICATION_SNAPSHOT_MISMATCH",
-            "This publication was not generated from the given snapshot.",
-            status_code=409,
-        )
-
-
 class NothingToInstruct(AppError):
     def __init__(self) -> None:
         super().__init__(

@@ -14,11 +14,14 @@ MONEY = Numeric(18, 10)
 
 class BuyInstruction(TimestampedBase):
     """§8, §13.1, Phase 4 — the v3 Buy Instruction. Generated wholly from a
-    published snapshot (`POST /buy-instructions` validates `publication_id`
-    actually belongs to `snapshot_id` — see services/buy_instruction_service.py
-    for why that guarantees every line already has a valid `bing_dnbp`), never
-    retyped. `note` is the only field `PATCH /buy-instructions/{id}` may touch
-    while DRAFT — the line figures are always regenerated, never hand-edited."""
+    CALCULATED snapshot's own `order_workings.bing_dnbp` (never retyped) — no
+    publication is required to exist yet at this point. `publication_id` is
+    intentionally nullable: it stays `None` through DRAFT and only gets set
+    at `publish()` time, since a `DnbpPublication` must never come into
+    existence except as the result of publishing an already-approved
+    instruction (see services/buy_instruction_service.py's `publish`). `note`
+    is the only field `PATCH /buy-instructions/{id}` may touch while DRAFT —
+    the line figures are always regenerated, never hand-edited."""
 
     __tablename__ = "buy_instructions"
 
@@ -27,8 +30,8 @@ class BuyInstruction(TimestampedBase):
     version: Mapped[int] = mapped_column(Integer, default=1)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     snapshot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("order_snapshots.id"), index=True)
-    publication_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnbp_publications.id"), index=True
+    publication_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dnbp_publications.id"), index=True, default=None
     )
 
     prepared_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

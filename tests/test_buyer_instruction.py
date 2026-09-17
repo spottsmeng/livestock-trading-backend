@@ -12,17 +12,15 @@ from tests.pipeline_helpers import accountant_headers, build_publishable_snapsho
 
 async def _issue_instruction(client, accountant, owner, everhealth_org) -> dict:
     snapshot = await build_publishable_snapshot(client, accountant)
-    publish_resp = await client.post("/api/v1/publications", json={"snapshot_id": snapshot["id"]}, headers=accountant)
-    publication = publish_resp.json()
     gen_resp = await client.post(
         "/api/v1/buy-instructions",
-        json={"snapshot_id": snapshot["id"], "publication_id": publication["id"]},
+        json={"snapshot_id": snapshot["id"]},
         headers=accountant,
     )
     instruction = gen_resp.json()
     await client.post(f"/api/v1/buy-instructions/{instruction['id']}/approve", headers=owner)
-    issue_resp = await client.post(f"/api/v1/buy-instructions/{instruction['id']}/issue", headers=accountant)
-    return issue_resp.json()
+    publish_resp = await client.post(f"/api/v1/buy-instructions/{instruction['id']}/publish", headers=accountant)
+    return publish_resp.json()
 
 
 async def test_buyer_sees_instruction_current_and_can_acknowledge(

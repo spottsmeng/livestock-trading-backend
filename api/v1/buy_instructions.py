@@ -8,9 +8,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import CurrentUser, require_role
+from api.deps import CurrentUser, redis_dep, require_role
 from core.db import get_db
 from core.errors import NotFound
 from core.reference_data import get_saleyard_calendar
@@ -19,7 +20,6 @@ from models.buy_instruction import BuyInstruction, BuyInstructionLine
 from models.enums import Role
 from repositories import buy_instructions as buy_instructions_repo
 from repositories import order_snapshots as order_snapshots_repo
-from repositories import publications as publications_repo
 from repositories import users as users_repo
 from schemas.buy_instructions import (
     AddFillRequest,
@@ -33,7 +33,7 @@ from schemas.buy_instructions import (
     SaleyardReconciliationResponse,
 )
 from services import buy_instruction_export as export_service
-from services import buy_instruction_service
+from services import buy_instruction_service, delivery_service
 
 router = APIRouter(prefix="/buy-instructions", tags=["buy-instructions"])
 
@@ -106,14 +106,10 @@ async def generate(
     snapshot = await order_snapshots_repo.get_by_id(db, body.snapshot_id)
     if snapshot is None or snapshot.org_id != current.org_id:
         raise NotFound("Snapshot")
-    publication = await publications_repo.get_by_id(db, body.publication_id)
-    if publication is None or publication.org_id != current.org_id:
-        raise NotFound("Publication")
 
     instruction, _lines = await buy_instruction_service.generate(
         db,
         snapshot=snapshot,
-        publication=publication,
         actor_id=current.user_id,
         trade_date=body.trade_date,
         note=body.note,
@@ -167,12 +163,20 @@ async def approve(
     return await _to_response(db, instruction)
 
 
-@router.post("/{instruction_id}/issue", response_model=BuyInstructionResponse)
-async def issue(
-    instruction_id: uuid.UUID, current: CurrentUser = Depends(_trading_console), db: AsyncSession = Depends(get_db)
+@router.post("/{instruction_id}/publish", response_model=BuyInstructionResponse)
+async def publish(
+    instruction_id: uuid.UUID,
+    current: CurrentUser = Depends(_trading_console),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(redis_dep),
 ) -> BuyInstructionResponse:
     instruction = await _get_owned(db, instruction_id, current.org_id)
-    await buy_instruction_service.issue(db, instruction, actor_id=current.user_id)
+    instruction, publication, lines = await buy_instruction_service.publish(db, instruction, actor_id=current.user_id)
+    await db.commit()
+
+    # Same ordering as the old direct /publications route, for the same
+    # reason: fan-out only after the publish itself is durably committed.
+    await delivery_service.fan_out(db, redis, publication=publication, lines=lines, buyer_notified=publication.buyer_notified)
     await db.commit()
     return await _to_response(db, instruction)
 

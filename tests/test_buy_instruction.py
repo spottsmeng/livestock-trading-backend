@@ -1,8 +1,15 @@
-"""Phase 4 — Buy Instruction generation, approval/issue gate, and the
+"""Phase 4 — Buy Instruction generation, approve/publish gate, and the
 order-keyed-vs-species-keyed DNBP distinction (non-negotiable #2). Uses the
 real 07-08 workbook, same discipline as the rest of this test suite, since
 that file's own CED18653/CED18655 SHEEP lines (different sell prices) are
 exactly the pair phase04-instructions.txt names as the worked example.
+
+A `DnbpPublication` must never come into existence except as the result of
+publishing an already-approved instruction (see
+services/buy_instruction_service.py's `publish`) — so, unlike the old
+version of this file, nothing here calls `POST /publications` directly to
+set up a Buy Instruction test: generate -> approve -> publish is the only
+path, same as a real trading day.
 """
 
 from decimal import Decimal
@@ -21,33 +28,38 @@ from tests.pipeline_helpers import (
 _MONEY_QUANT = Decimal("0.0000000001")  # NUMERIC(18,10) — same 10dp scale every stored money/rate column rounds to
 
 
-async def _publish(client, headers, snapshot_id: str) -> dict:
-    resp = await client.post("/api/v1/publications", json={"snapshot_id": snapshot_id}, headers=headers)
+async def _generate_instruction(client, headers, snapshot_id: str) -> dict:
+    resp = await client.post("/api/v1/buy-instructions", json={"snapshot_id": snapshot_id}, headers=headers)
     assert resp.status_code == 201, resp.text
     return resp.json()
 
 
-async def _generate_instruction(client, headers, snapshot_id: str, publication_id: str) -> dict:
-    resp = await client.post(
-        "/api/v1/buy-instructions",
-        json={"snapshot_id": snapshot_id, "publication_id": publication_id},
-        headers=headers,
-    )
-    assert resp.status_code == 201, resp.text
-    return resp.json()
+async def _approve_and_publish(client, owner, trading_console_headers, instruction_id: str) -> dict:
+    approve_resp = await client.post(f"/api/v1/buy-instructions/{instruction_id}/approve", headers=owner)
+    assert approve_resp.status_code == 200, approve_resp.text
+
+    publish_resp = await client.post(f"/api/v1/buy-instructions/{instruction_id}/publish", headers=trading_console_headers)
+    assert publish_resp.status_code == 200, publish_resp.text
+    return publish_resp.json()
 
 
 async def test_instruction_lines_are_order_keyed_not_species_min(
     client, db: AsyncSession, everhealth_org: Organisation
 ):
-    headers = await accountant_headers(client, db, everhealth_org, email="bing-bi1@test.com")
-    snapshot = await build_publishable_snapshot(client, headers)
-    publication = await _publish(client, headers, snapshot["id"])
+    accountant = await accountant_headers(client, db, everhealth_org, email="bing-bi1@test.com")
+    owner = await owner_headers(client, db, everhealth_org, email="bobby-bi1@test.com")
+    snapshot = await build_publishable_snapshot(client, accountant)
 
-    sheep_pub_line = next(line for line in publication["lines"] if line["species"] == "SHEEP")
+    instruction = await _generate_instruction(client, accountant, snapshot["id"])
+    published_instruction = await _approve_and_publish(client, owner, accountant, instruction["id"])
 
-    instruction = await _generate_instruction(client, headers, snapshot["id"], publication["id"])
-    by_contract = {line["contract_no"]: line for line in instruction["lines"]}
+    publication_resp = await client.get(
+        f"/api/v1/publications/{published_instruction['publication_id']}", headers=accountant
+    )
+    assert publication_resp.status_code == 200, publication_resp.text
+    sheep_pub_line = next(line for line in publication_resp.json()["lines"] if line["species"] == "SHEEP")
+
+    by_contract = {line["contract_no"]: line for line in published_instruction["lines"]}
     ced18653 = by_contract["CED18653"]
     ced18655 = by_contract["CED18655"]
 
@@ -68,7 +80,7 @@ async def test_instruction_lines_are_order_keyed_not_species_min(
     # independent of whatever the publication computed.
     config = await get_active_everhealth_config(db)
     lines_resp = await client.get(
-        f"/api/v1/snapshots/{snapshot['id']}/lines", params={"lifecycle": "ACTIVE"}, headers=headers
+        f"/api/v1/snapshots/{snapshot['id']}/lines", params={"lifecycle": "ACTIVE"}, headers=accountant
     )
     by_contract_received = {line["contract_no"]: line for line in lines_resp.json()}
     expected_18653 = compute_bing_dnbp(Decimal(by_contract_received["CED18653"]["avg_price_aud"]), "SHEEP", config)
@@ -83,11 +95,11 @@ async def test_expected_livestock_cost_uses_bing_dnbp_not_peters_expectation(
     client, db: AsyncSession, everhealth_org: Organisation
 ):
     """[D6] resolved — the sample's own `8.4`-based figure is a documented
-    error; this must NOT be reproduced."""
+    error; this must NOT be reproduced. Doesn't need a publication at all —
+    generate() reads bing_dnbp straight off the calculated snapshot."""
     headers = await accountant_headers(client, db, everhealth_org, email="bing-bi2@test.com")
     snapshot = await build_publishable_snapshot(client, headers)
-    publication = await _publish(client, headers, snapshot["id"])
-    instruction = await _generate_instruction(client, headers, snapshot["id"], publication["id"])
+    instruction = await _generate_instruction(client, headers, snapshot["id"])
 
     for line in instruction["lines"]:
         expected = (
@@ -102,34 +114,18 @@ async def test_expected_livestock_cost_uses_bing_dnbp_not_peters_expectation(
                 assert Decimal(line["expected_livestock_cost"]) != wrong
 
 
-async def test_generate_refuses_publication_snapshot_mismatch(client, db: AsyncSession, everhealth_org: Organisation):
-    headers = await accountant_headers(client, db, everhealth_org, email="bing-bi3@test.com")
-    snapshot_a = await build_publishable_snapshot(client, headers)
-    publication_a = await _publish(client, headers, snapshot_a["id"])
-
-    snapshot_b = await build_publishable_snapshot(client, headers)
-
-    resp = await client.post(
-        "/api/v1/buy-instructions",
-        json={"snapshot_id": snapshot_b["id"], "publication_id": publication_a["id"]},
-        headers=headers,
-    )
-    assert resp.status_code == 409, resp.text
-    assert resp.json()["error"]["code"] == "PUBLICATION_SNAPSHOT_MISMATCH"
-
-
-async def test_issue_refused_before_approval_then_succeeds_after(
+async def test_publish_refused_before_approval_then_succeeds_after(
     client, db: AsyncSession, everhealth_org: Organisation
 ):
     accountant = await accountant_headers(client, db, everhealth_org, email="bing-bi4@test.com")
     owner = await owner_headers(client, db, everhealth_org, email="bobby-bi4@test.com")
     snapshot = await build_publishable_snapshot(client, accountant)
-    publication = await _publish(client, accountant, snapshot["id"])
-    instruction = await _generate_instruction(client, accountant, snapshot["id"], publication["id"])
+    instruction = await _generate_instruction(client, accountant, snapshot["id"])
+    assert instruction["publication_id"] is None
 
-    issue_resp = await client.post(f"/api/v1/buy-instructions/{instruction['id']}/issue", headers=accountant)
-    assert issue_resp.status_code == 409, issue_resp.text
-    assert issue_resp.json()["error"]["code"] == "INSTRUCTION_NOT_APPROVED"
+    publish_resp = await client.post(f"/api/v1/buy-instructions/{instruction['id']}/publish", headers=accountant)
+    assert publish_resp.status_code == 409, publish_resp.text
+    assert publish_resp.json()["error"]["code"] == "INSTRUCTION_NOT_APPROVED"
 
     # §9.6 — approve is OWNER only; an ACCOUNTANT attempting it is refused.
     forbidden_resp = await client.post(f"/api/v1/buy-instructions/{instruction['id']}/approve", headers=accountant)
@@ -140,17 +136,17 @@ async def test_issue_refused_before_approval_then_succeeds_after(
     assert approve_resp.json()["approved_by"] is not None
     assert approve_resp.json()["status"] == "DRAFT"  # approve does NOT change status
 
-    issue_resp2 = await client.post(f"/api/v1/buy-instructions/{instruction['id']}/issue", headers=accountant)
-    assert issue_resp2.status_code == 200, issue_resp2.text
-    assert issue_resp2.json()["status"] == "ISSUED"
+    publish_resp2 = await client.post(f"/api/v1/buy-instructions/{instruction['id']}/publish", headers=accountant)
+    assert publish_resp2.status_code == 200, publish_resp2.text
+    assert publish_resp2.json()["status"] == "ISSUED"
+    assert publish_resp2.json()["publication_id"] is not None
 
 
 async def test_fills_are_open_ended_not_fixed_to_three(client, db: AsyncSession, everhealth_org: Organisation):
     accountant = await accountant_headers(client, db, everhealth_org, email="bing-bi5@test.com")
     owner = await owner_headers(client, db, everhealth_org, email="bobby-bi5@test.com")
     snapshot = await build_publishable_snapshot(client, accountant)
-    publication = await _publish(client, accountant, snapshot["id"])
-    instruction = await _generate_instruction(client, accountant, snapshot["id"], publication["id"])
+    instruction = await _generate_instruction(client, accountant, snapshot["id"])
 
     # Fills refused while still DRAFT.
     line_id = instruction["lines"][0]["id"]
@@ -162,8 +158,7 @@ async def test_fills_are_open_ended_not_fixed_to_three(client, db: AsyncSession,
     assert early_fill.status_code == 409
     assert early_fill.json()["error"]["code"] == "FILLS_NOT_ALLOWED"
 
-    await client.post(f"/api/v1/buy-instructions/{instruction['id']}/approve", headers=owner)
-    await client.post(f"/api/v1/buy-instructions/{instruction['id']}/issue", headers=accountant)
+    await _approve_and_publish(client, owner, accountant, instruction["id"])
 
     schw_kg = Decimal(instruction["lines"][0]["schw_kg"])
     labels = ["Buy 1", "Buy 2", "Buy 3", "Buy 4", "Buy 5"]

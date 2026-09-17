@@ -1,23 +1,19 @@
 """POST /buy-instructions (§9.6, §13.1) and the full instruction lifecycle,
 Phase 4.
 
-`generate` validates that `publication_id` actually belongs to `snapshot_id`
-before doing anything else. That single check is what guarantees every
-resulting line has a valid `bing_dnbp`: a `DnbpPublication` can only ever be
-created by `services.publication_service.publish`, which itself calls
-`_assert_publishable` first and refuses (`PublicationBlocked`) if any ACTIVE
-line in the snapshot holds a BLOCK issue — the only issues that can leave
-`order_workings.bing_dnbp` unpopulated (§5.7). So a publication that
-validates against this snapshot is proof the snapshot already passed that
-gate; `generate` can safely read every ACTIVE line's own `bing_dnbp`
-straight from `order_workings` without re-deriving or re-checking anything
-itself, and — critically — without ever touching the species-keyed
+`generate` reads every ACTIVE line's own `bing_dnbp` straight from
+`order_workings` — the same source `services.publication_service`'s
+`compute_publication_lines` reads — without ever touching the species-keyed
 `dnbp_publication_lines` (see dnbp-publication-is-species-keyed): the Buy
-Instruction is the other, order-keyed consumer of `AC`.
+Instruction is the other, order-keyed consumer of `AC`. No `DnbpPublication`
+needs to exist yet for this: `publication_id` stays `None` through DRAFT.
 
-Status machine (non-negotiable, confirmed with Terence before building):
+Status machine (revised — a `DnbpPublication` must never come into existence
+except as the result of publishing an already-approved instruction, so
+"issue" and "publish" are now the same action):
   DRAFT --approve (OWNER only)--> DRAFT (stamps approved_by/approved_at only)
-  DRAFT --issue (requires approved_by set)--> ISSUED
+  DRAFT --publish (requires approved_by set)--> ISSUED (creates the
+    DnbpPublication via publication_service.publish and links it)
   ISSUED --buyer acknowledges--> ACKNOWLEDGED
   ACKNOWLEDGED --reconcile-close (OWNER or ACCOUNTANT)--> RECONCILED
 
@@ -38,16 +34,16 @@ from core.errors import (
     InvalidInstructionTransition,
     NotFound,
     NothingToInstruct,
-    PublicationSnapshotMismatch,
 )
 from core.trading_calendar import trading_week_bounds
 from models.buy_instruction import BuyInstruction, BuyInstructionLine, BuyInstructionLineFill
-from models.dnbp_publication import DnbpPublication
+from models.dnbp_publication import DnbpPublication, DnbpPublicationLine
 from models.enums import BuyInstructionStatus
 from models.order_snapshot import OrderSnapshot
 from repositories import buy_instructions as buy_instructions_repo
+from repositories import order_snapshots as order_snapshots_repo
 from repositories import order_workings as order_workings_repo
-from services import audit_service
+from services import audit_service, publication_service
 
 MONEY_ZERO = Decimal("0")
 
@@ -56,14 +52,10 @@ async def generate(
     db: AsyncSession,
     *,
     snapshot: OrderSnapshot,
-    publication: DnbpPublication,
     actor_id: uuid.UUID,
     trade_date: date | None,
     note: str | None,
 ) -> tuple[BuyInstruction, list[BuyInstructionLine]]:
-    if publication.snapshot_id != snapshot.id:
-        raise PublicationSnapshotMismatch()
-
     rows = await order_workings_repo.list_active_with_bing_dnbp(db, snapshot.id)
     if not rows:
         raise NothingToInstruct()
@@ -85,7 +77,6 @@ async def generate(
         version=version,
         trade_date=effective_trade_date,
         snapshot_id=snapshot.id,
-        publication_id=publication.id,
         prepared_by=actor_id,
         note=note,
         status=BuyInstructionStatus.DRAFT,
@@ -125,7 +116,7 @@ async def generate(
         action="buy_instruction.generated",
         entity="buy_instruction",
         entity_id=instruction.id,
-        after={"snapshot_id": str(snapshot.id), "publication_id": str(publication.id), "line_count": len(lines)},
+        after={"snapshot_id": str(snapshot.id), "line_count": len(lines)},
     )
 
     return instruction, lines
@@ -163,16 +154,47 @@ async def approve(db: AsyncSession, instruction: BuyInstruction, *, actor_id: uu
     return instruction
 
 
-async def issue(db: AsyncSession, instruction: BuyInstruction, *, actor_id: uuid.UUID) -> BuyInstruction:
+async def publish(
+    db: AsyncSession, instruction: BuyInstruction, *, actor_id: uuid.UUID
+) -> tuple[BuyInstruction, DnbpPublication, list[DnbpPublicationLine]]:
+    """The action that used to be the Workbench's standalone "Publish"
+    button (POST /publications), moved to here and gated on approval: a
+    `DnbpPublication` (what makes DNBP live on the buyer's PWA) must never
+    come into existence except as the result of publishing an
+    already-approved instruction — otherwise a buyer could act on a price
+    whose underlying order-level cost exposure (Peters Expectation vs.
+    expected livestock cost) was never reviewed by anyone. Reuses
+    `publication_service.publish` untouched: its existing BLOCK-refusal /
+    mandatory-WARN-acknowledgment gate keeps working exactly as before.
+
+    Returns the publication and its lines (not just the instruction) so the
+    caller can run `delivery_service.fan_out` — the actual buyer
+    notification — the same way the old direct route did; this function
+    intentionally does not call it itself, since committing before fan-out
+    (and again after) is the API layer's job here, same as every other
+    service in this codebase."""
     if instruction.status != BuyInstructionStatus.DRAFT:
-        raise InvalidInstructionTransition("Only a DRAFT instruction can be issued.")
+        raise InvalidInstructionTransition("Only a DRAFT instruction can be published.")
     if instruction.approved_by is None:
         raise InstructionNotApproved()
+
+    snapshot = await order_snapshots_repo.get_by_id(db, instruction.snapshot_id)
+    if snapshot is None:
+        raise NotFound("Snapshot")
+
+    publication, lines = await publication_service.publish(db, snapshot, actor_id=actor_id, notes=None)
+
+    instruction.publication_id = publication.id
     instruction.status = BuyInstructionStatus.ISSUED
     await audit_service.write(
-        db, actor_id=actor_id, action="buy_instruction.issued", entity="buy_instruction", entity_id=instruction.id
+        db,
+        actor_id=actor_id,
+        action="buy_instruction.published",
+        entity="buy_instruction",
+        entity_id=instruction.id,
+        after={"publication_id": str(publication.id)},
     )
-    return instruction
+    return instruction, publication, lines
 
 
 async def acknowledge(db: AsyncSession, instruction: BuyInstruction, *, buyer_id: uuid.UUID) -> BuyInstruction:
